@@ -1,8 +1,8 @@
 [eth]
-rpc_url = " https://mainnet.infura.io/v3/YOUR_KEY " # RPC节点地址
+rpc_url = "https://reth-ethereum.ithaca.xyz/rpc" # RPC节点地址
 chain_id = 1
-start_block = 10000000                              # 起始区块
-end_block = 10000005                                # 结束区块
-output_file = "transactions.csv"                    # 输出路径
+start_block = 10000000                           # 起始区块
+end_block = 10000005                             # 结束区块
+output_file = "transactions.csv"                 # 输出路径
 [log]
 level = "debug" # 日志级别
