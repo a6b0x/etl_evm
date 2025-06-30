@@ -55,7 +55,7 @@ mod tests {
             );
             let transformed_block = transform_block(block).unwrap();
             info!("transformed_block: {:#?}", transformed_block);
-            info!("get_block_data Block.transactions: {:#?}", block.transactions.first_transaction());
+            info!("get_block_data Block.FirstTransaction: {:#?}", block.transactions.first_transaction());
         }
     }
 }
