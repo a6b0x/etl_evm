@@ -1,4 +1,4 @@
-use alloy::providers::{Provider, ProviderBuilder};
+use alloy::providers::{Provider, ProviderBuilder,DynProvider};
 use alloy::rpc::types::eth::Block;
 use alloy::sol;
 use alloy::primitives::{Address,address};
@@ -13,14 +13,17 @@ sol!(
 );
 
 pub struct RpcClient {
-    provider: Box<dyn Provider>, 
+    provider: DynProvider, 
 }
 
 impl RpcClient {
-    pub fn new(url: &str) -> Result<Self> {
+    pub fn new(url: &str) ->  Result<Self>{
         let rpc_url = url.parse()?;
         let provider= ProviderBuilder::new().connect_http(rpc_url);
-        Ok(Self { provider: Box::new(provider) })
+        let dyn_provider = provider.erased();
+        Ok(Self {
+            provider: dyn_provider,
+        })
     }
 
     pub async fn get_new_block_number(&self) -> Result<(u64)> {
@@ -37,13 +40,11 @@ impl RpcClient {
             .unwrap();
         Ok(block_data)
     }
+
     pub async fn get_uniswap_v2_all_pairs_length(&self) -> Result<u128> {
-        let rpc_url = "https://reth-ethereum.ithaca.xyz/rpc".parse()?;
-        let provider = ProviderBuilder::new().connect_http(rpc_url);
         const UNISWAP_V2_FACTORY_ADDR: Address = address!("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f");
-        let contract = UniswapV2Factory::new(UNISWAP_V2_FACTORY_ADDR, provider);
+        let contract = UniswapV2Factory::new(UNISWAP_V2_FACTORY_ADDR, self.provider.clone());
         let all_pairs_length = contract.allPairsLength().call().await?;
-        info!("all_pairs_length: {:?}", all_pairs_length);
         let all_pairs_length_u128: u128 = all_pairs_length.try_into().unwrap();
         Ok(all_pairs_length_u128)
     }
