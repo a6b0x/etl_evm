@@ -5,7 +5,7 @@ use alloy::sol;
 use eyre::Result;
 
 pub struct RpcClient {
-    provider: DynProvider,
+    pub provider: DynProvider,
 }
 
 impl RpcClient {
@@ -32,6 +32,10 @@ impl RpcClient {
             .unwrap();
         Ok(block_data)
     }
+
+    pub fn provider(&self) -> &DynProvider {
+        &self.provider
+    }
 }
 
 sol!(
@@ -55,9 +59,9 @@ sol!(
     "data/UniswapV2Pair.json"
 );
 pub struct UniswapV2 {
-    provider: DynProvider,
-    router_caller: UniswapV2Router::UniswapV2RouterInstance<DynProvider>,
-    factory_caller: UniswapV2Factory::UniswapV2FactoryInstance<DynProvider>,
+    pub provider: DynProvider,
+    pub router_caller: UniswapV2Router::UniswapV2RouterInstance<DynProvider>,
+    pub factory_caller: UniswapV2Factory::UniswapV2FactoryInstance<DynProvider>,
 }
 
 impl UniswapV2 {
@@ -98,7 +102,7 @@ impl UniswapV2 {
         let logs = self.provider.get_logs(&filter).await?;
         Ok(logs)
     }
-    
+
     pub async fn get_pair_liquidity(
         &self,
         pair_address: Address,
