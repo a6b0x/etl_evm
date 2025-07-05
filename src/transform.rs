@@ -1,4 +1,5 @@
-use alloy::rpc::types::eth::Block;
+use alloy::primitives::Address;
+use alloy::rpc::types::eth::{Block, Log};
 use chrono::{DateTime, Local, Utc};
 use eyre::{ContextCompat, Result};
 
@@ -26,11 +27,176 @@ pub fn transform_block(block: &Block) -> Result<BlockV1> {
         date_time: local_date_time,
     })
 }
+#[derive(Debug)]
+pub struct PairCreatedEvent {
+    pub fun_signature: String,
+    pub token0: Address,
+    pub token1: Address,
+    pub block_number: u64,
+    pub tx_hash: String,
+    pub date_time: DateTime<Local>,
+}
+
+pub fn transform_pair_created_event(log: &Log) -> Result<PairCreatedEvent> {
+    if log.topics().len() < 3 {
+        return Err(eyre::eyre!("Invalid PairCreated event log topics length"));
+    }
+    let fun_signature = log.topics()[0].to_string();
+    let token0 = Address::from_slice(&log.topics()[1][12..32]);
+    let token1 = Address::from_slice(&log.topics()[2][12..32]);
+    let block_number = log.block_number.unwrap();
+    let tx_hash = log.transaction_hash.unwrap().to_string();
+    let date_time = DateTime::<Utc>::from_timestamp(log.block_timestamp.unwrap() as i64, 0)
+        .context("Failed to convert timestamp to DateTime")?;
+    let local_date_time = date_time.with_timezone(&Local);
+
+    Ok(PairCreatedEvent { fun_signature, token0, token1, block_number, tx_hash, date_time: local_date_time })
+}
+
+#[derive(Debug)]
+pub struct MintEvent {
+    pub fun_signature: String,
+    pub sender: Address,
+    pub amount0: u128,
+    pub amount1: u128,
+    pub block_number: u64,
+    pub tx_hash: String,
+    pub date_time: DateTime<Local>,
+}
+
+pub fn transform_mint_event(log: &Log) -> Result<MintEvent> {
+    if log.topics().len() < 2 {
+        return Err(eyre::eyre!("Invalid Mint event log topics length"));
+    }
+    let fun_signature = log.topics()[0].to_string();
+    let sender = Address::from_slice(&log.topics()[1][12..32]);
+
+    let log_data= log.data().data.clone();
+    if log_data.len() < 48 {
+        return Err(eyre::eyre!("Mint event log data length is less than 48 bytes"));
+    }
+    let amount0 = u128::from_be_bytes(log_data[16..32].try_into().unwrap());
+    let amount1 = u128::from_be_bytes(log_data[48..64].try_into().unwrap());
+
+    let block_number = log.block_number.unwrap();
+    let tx_hash = log.transaction_hash.unwrap().to_string();
+    let date_time = DateTime::<Utc>::from_timestamp(log.block_timestamp.unwrap() as i64, 0)
+        .context("Failed to convert timestamp to DateTime")?;
+    let local_date_time = date_time.with_timezone(&Local);
+
+    Ok(MintEvent {
+        fun_signature,
+        sender,
+        amount0,
+        amount1,
+        block_number,
+        tx_hash,
+        date_time: local_date_time,
+    })
+}
+
+#[derive(Debug)]
+pub struct BurnEvent {
+    pub fun_signature: String,
+    pub sender: Address,
+    pub address: Address,
+    pub amount0: u128,
+    pub amount1: u128,
+    pub block_number: u64,
+    pub tx_hash: String,
+    pub date_time: DateTime<Local>,
+}
+
+pub fn transform_burn_event(log: &Log) -> Result<BurnEvent> {
+    if log.topics().len() < 3 {
+        return Err(eyre::eyre!("Invalid Burn event log topics length"));
+    }
+    let fun_signature = log.topics()[0].to_string();
+    let sender = Address::from_slice(&log.topics()[1][12..32]);
+    let address = Address::from_slice(&log.topics()[2][12..32]);
+
+    let log_data = log.data().data.clone(); 
+    if log_data.len() < 64 {
+        return Err(eyre::eyre!("Burn event log data length is less than 64 bytes"));
+    }
+    let amount0 = u128::from_be_bytes(log_data[16..32].try_into().unwrap());
+    let amount1 = u128::from_be_bytes(log_data[48..64].try_into().unwrap());
+
+    let block_number = log.block_number.unwrap();
+    let tx_hash = log.transaction_hash.unwrap().to_string();
+    let date_time = DateTime::<Utc>::from_timestamp(log.block_timestamp.unwrap() as i64, 0)
+        .context("Failed to convert timestamp to DateTime")?;
+    let local_date_time = date_time.with_timezone(&Local);
+
+    Ok(BurnEvent {
+        fun_signature,
+        sender,
+        address,
+        amount0,
+        amount1,
+        block_number,
+        tx_hash,
+        date_time: local_date_time,
+    })
+}
+
+#[derive(Debug)]
+pub struct SwapEvent {
+    pub fun_signature: String,
+    pub sender: Address,
+    pub address: Address,
+    pub amount0_in: u128,
+    pub amount1_in: u128,
+    pub amount0_out: u128,
+    pub amount1_out: u128,
+    pub block_number: u64,
+    pub tx_hash: String,
+    pub date_time: DateTime<Local>,
+}
+
+pub fn transform_swap_event(log: &Log) -> Result<SwapEvent> {
+    if log.topics().len() < 3 {
+        return Err(eyre::eyre!("Invalid Swap event log topics length"));
+    }
+    let fun_signature = log.topics()[0].to_string();
+    let sender = Address::from_slice(&log.topics()[1][12..32]);
+    let address = Address::from_slice(&log.topics()[2][12..32]);
+    
+
+    let log_data = log.data().data.clone(); 
+    if log_data.len() < 128 {
+        return Err(eyre::eyre!("Swap event log data length is less than 64 bytes"));
+    }
+    let amount0_in = u128::from_be_bytes(log_data[16..32].try_into().unwrap());
+    let amount1_in = u128::from_be_bytes(log_data[48..64].try_into().unwrap());
+    let amount0_out = u128::from_be_bytes(log_data[80..96].try_into().unwrap());
+    let amount1_out = u128::from_be_bytes(log_data[112..128].try_into().unwrap());
+    
+    let block_number = log.block_number.unwrap();
+    let tx_hash = log.transaction_hash.unwrap().to_string();
+    let date_time = DateTime::<Utc>::from_timestamp(log.block_timestamp.unwrap() as i64, 0)
+        .context("Failed to convert timestamp to DateTime")?;
+    let local_date_time = date_time.with_timezone(&Local);
+
+    Ok(SwapEvent {
+        fun_signature,
+        sender,
+        address,
+        amount0_in,
+        amount1_in,
+        amount0_out,
+        amount1_out,
+        block_number,
+        tx_hash,
+        date_time: local_date_time,
+    })
+}
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{extract::RpcClient, init::AppConfig};
+    use crate::{extract::RpcClient, extract::UniswapV2, init::AppConfig};
+    use alloy::primitives::address;
     use log::info;
 
     #[tokio::test]
@@ -55,7 +221,78 @@ mod tests {
             );
             let transformed_block = transform_block(block).unwrap();
             info!("transformed_block: {:#?}", transformed_block);
-            info!("get_block_data Block.FirstTransaction: {:#?}", block.transactions.first_transaction());
+            info!(
+                "get_block_data Block.FirstTransaction: {:#?}",
+                block.transactions.first_transaction()
+            );
         }
     }
+    #[tokio::test]
+    async fn test_transform_pair_created_event() {
+        let app_config = AppConfig::new().unwrap();
+        let log_level = app_config.init_log().unwrap();
+        info!("app_config.log_level: {:?}", log_level);
+
+        let rpc_client = RpcClient::new(&app_config.eth.rpc_url).unwrap();
+        let router_addr = address!("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D");
+        let uniswap_v2 = UniswapV2::new(rpc_client.provider.clone(), router_addr).await;
+        info!(
+            "uniswap_v2 factory_caller: {:#?}",
+            uniswap_v2.factory_caller
+        );
+
+        let from_block = 22770510;
+        let to_block = 22770512;
+        let pair_created_events = uniswap_v2
+            .get_pair_created(from_block, to_block)
+            .await
+            .unwrap();
+        info!("pair_created_events: {:#?}", pair_created_events);
+        if let Some(event) = pair_created_events.first() {
+            info!("First event topics length: {}", event.topics().len());
+            info!("First event topics: {:#?}", event.topics());
+            let pair_created_event = transform_pair_created_event(event).unwrap();
+            info!("pair_created_event: {:#?}", pair_created_event);
+        }
+    }
+
+    #[tokio::test]
+    async fn test_transform_mbs_event() {
+        let app_config = AppConfig::new().unwrap();
+        let log_level = app_config.init_log().unwrap();
+        info!("app_config.log_level: {:?}", log_level);
+
+        let rpc_client = RpcClient::new(&app_config.eth.rpc_url).unwrap();
+        let router_addr = address!("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D");
+        let uniswap_v2 = UniswapV2::new(rpc_client.provider.clone(), router_addr).await;
+        info!(
+            "uniswap_v2 factory_caller: {:#?}",
+            uniswap_v2.factory_caller
+        );
+
+        let pair_address = address!("0xaAF2fe003BB967EB7C35A391A2401e966bdB7F95");
+        let from_block1 = 22828657;
+        let to_block1 = 22828661;
+        let (mint_logs, burn_logs, swap_logs) = uniswap_v2
+            .get_pair_liquidity(pair_address, from_block1, to_block1)
+            .await
+            .unwrap();
+        info!(
+            "get_pair_liquidity pair_address: {} 
+            mint_logs: {:#?} burn_logs: {:#?} swap_logs: {:#?}",
+            pair_address,
+            mint_logs, burn_logs, swap_logs
+        );
+
+        let mint_event = transform_mint_event(mint_logs.first().unwrap()).unwrap();
+        info!("mint_event: {:#?}", mint_event);
+
+        let burn_event = transform_burn_event(burn_logs.first().unwrap()).unwrap();
+        info!("burn_event: {:#?}", burn_event);
+
+        let swap_event = transform_swap_event(swap_logs.first().unwrap()).unwrap();
+        info!("swap_event: {:#?}", swap_event);
+
+    }
+
 }
