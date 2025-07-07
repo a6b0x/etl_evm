@@ -58,11 +58,20 @@ sol!(
     UniswapV2Pair,
     "data/UniswapV2Pair.json"
 );
+
+sol!(
+    #[allow(missing_docs)]
+    #[sol(rpc)]
+    ERC20Token,
+    "data/ERC20.json" 
+);
+
 pub struct UniswapV2 {
     pub provider: DynProvider,
     pub router_caller: UniswapV2Router::UniswapV2RouterInstance<DynProvider>,
     pub factory_caller: UniswapV2Factory::UniswapV2FactoryInstance<DynProvider>,
 }
+
 
 impl UniswapV2 {
     pub async fn new(fprovider: DynProvider, router_address: Address) -> Self {
@@ -136,6 +145,14 @@ impl UniswapV2 {
 
         Ok((mint_logs, burn_logs, swap_logs))
     }
+
+    pub async fn get_token_symbol(&self, token_address: Address) -> Result<String> {
+        let token_contract = ERC20Token::new(token_address, self.provider.clone());
+        let token_symbol = token_contract.symbol().call().await?;
+
+        Ok(token_symbol)
+    }
+
 }
 
 #[cfg(test)]
@@ -223,5 +240,9 @@ mod tests {
             pair_address,
             mint_logs, burn_logs, swap_logs
         );
+
+        let token_addr = address!("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2");
+        let token_name = uniswap_v2.get_token_symbol(token_addr).await.unwrap();
+        info!("get_token_symbol: {:?}", token_name);
     }
 }
