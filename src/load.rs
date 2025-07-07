@@ -13,15 +13,25 @@ pub struct TableBlock {
     pub date_time: String,
 }
 #[derive(Debug, Serialize)]
-pub struct UniswapV2Event {
+pub struct UniswapV2Pair {
     pub block_time: String,
     pub block_number: u64,
     pub transaction_hash: String,
     pub event_type: String,
-    pub from_address: String,
-    pub to_address: String,
+    pub factory_address: String,
+    pub pair_adress: String,
     pub token0: String,
     pub token1: String,
+}
+
+#[derive(Debug, Serialize)]
+pub struct UniswapV2PairEvent {
+    pub block_time: String,
+    pub block_number: u64,
+    pub transaction_hash: String,
+    pub event_type: String,
+    pub route_address: String,
+    pub pair_address: String,
     pub amount0: String,
     pub amount1: String,
 }
@@ -46,7 +56,15 @@ impl CsvFile {
             .context("Failed to write block data")
     }
 
-    pub fn write_event(&mut self, events: &[UniswapV2Event]) -> Result<()> {
+    pub fn write_pair(&mut self, events: &[UniswapV2Pair]) -> Result<()> {
+        for event in events {
+            self.writer
+                .serialize(event)
+                .context("Failed to write event data")?;
+        }
+        Ok(())
+    }
+    pub fn write_pair_event(&mut self, events: &[UniswapV2PairEvent]) -> Result<()> {
         for event in events {
             self.writer
                 .serialize(event)
@@ -65,7 +83,7 @@ mod tests {
         transform::transform_burn_event, transform::transform_mint_event,
         transform::transform_pair_created_event, transform::transform_swap_event,
     };
-    use alloy::primitives::address;
+    use alloy::primitives::{address,Address};
     use eyre::{Ok, Result};
     use log::info;
     use std::io::Write;
@@ -118,7 +136,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_load_event() {
+    async fn test_load_uniswapv2() {
         let app_config = AppConfig::new().unwrap();
         let log_level = app_config.init_log().unwrap();
         info!("app_config.log_level: {:?}", log_level);
@@ -132,7 +150,8 @@ mod tests {
         );
 
         let from_block = 22828657;
-        let to_block = 22828661;
+        let to_block = 22828691;
+        //let to_block = 22829000;
         let pair_created_events = uniswap_v2
             .get_pair_created(from_block, to_block)
             .await
@@ -142,94 +161,91 @@ mod tests {
         let pair_created_event = transform_pair_created_event(&pair_created_events).unwrap();
         info!("pair_created_event: {:#?}", pair_created_event);
 
-        let mut csv_file = CsvFile::new("data/event.csv").unwrap();
-        let pair_created_events = pair_created_event
+        let mut csv_file = CsvFile::new("data/pair.csv").unwrap();
+        let pair_created_event1 = pair_created_event
             .iter()
-            .map(|event| UniswapV2Event {
+            .map(|event| UniswapV2Pair {
                 block_time: event.date_time.to_string(),
                 block_number: event.block_number,
                 transaction_hash: event.tx_hash.clone(),
                 event_type: "PairCreated".to_string(),
-                from_address: event.factory_address.to_string(),
-                to_address: event.pair_address.to_string(),
+                factory_address: event.factory_address.to_string(),
+                pair_adress: event.pair_address.to_string(),
                 token0: event.token0.to_string(),
                 token1: event.token1.to_string(),
-                amount0: 0.to_string(),
-                amount1: 0.to_string(),
             })
             .collect::<Vec<_>>();
-        csv_file.write_event(&pair_created_events).unwrap();
+        csv_file.write_pair(&pair_created_event1).unwrap();
 
-        let pair_address = address!("0xaAF2fe003BB967EB7C35A391A2401e966bdB7F95");
-        let (mint_logs, burn_logs, swap_logs) = uniswap_v2
-            .get_pair_liquidity(pair_address, from_block, to_block)
-            .await
-            .unwrap();
-        info!(
-            "get_pair_liquidity pair_address: {} 
+        let mut csv_file1 = CsvFile::new("data/pair_event.csv").unwrap();
+        let mut pair_events: Vec<UniswapV2PairEvent> = Vec::new();
+        for event in pair_created_event {
+            let pair_address = event.pair_address;
+            let (mint_logs, burn_logs, swap_logs) = uniswap_v2
+                .get_pair_liquidity(pair_address, from_block, to_block)
+                .await
+                .unwrap();
+            info!(
+                "get_pair_liquidity pair_address: {} 
             mint_logs: {:#?} burn_logs: {:#?} swap_logs: {:#?}",
-            pair_address, mint_logs, burn_logs, swap_logs
-        );
+                pair_address, mint_logs, burn_logs, swap_logs
+            );
 
-        let mint_events = transform_mint_event(&mint_logs).unwrap();
-        info!("mint_events: {:#?}", mint_events);
-        let mint_uniswap_events = mint_events
-            .iter()
-            .map(|event| UniswapV2Event {
-                block_time: event.date_time.to_string(),
-                block_number: event.block_number,
-                transaction_hash: event.tx_hash.clone(),
-                event_type: "Mint".to_string(),
-                from_address: event.sender.to_string(),
-                to_address:pair_address.to_string(),
-                token0: "null".to_string(),
-                token1: "null".to_string(),
-                amount0: event.amount0.to_string(),
-                amount1: event.amount1.to_string(),
-            })
-            .collect::<Vec<_>>();
-        csv_file.write_event(&mint_uniswap_events).unwrap();
-
-        let burn_events = transform_burn_event(&burn_logs).unwrap();
-        info!("burn_events: {:#?}", burn_events);
-        let burn_uniswap_events = burn_events
-            .iter()
-            .map(|event| UniswapV2Event {
-                block_time: event.date_time.to_string(),
-                block_number: event.block_number,
-                transaction_hash: event.tx_hash.clone(),
-                event_type: "Burn".to_string(),
-                from_address: event.sender.to_string(),
-                to_address: event.address.to_string(),
-                token0: "null".to_string(),
-                token1: "null".to_string(),
-                amount0: event.amount0.to_string(),
-                amount1: event.amount1.to_string(),
-            })
-            .collect::<Vec<_>>();
-        csv_file.write_event(&burn_uniswap_events).unwrap();
-
-        let swap_events = transform_swap_event(&swap_logs).unwrap();
-        info!("swap_events: {:#?}", swap_events);
-        let swap_uniswap_events = swap_events
-            .iter()
-            .map(|event| {
-                let total_amount0 = event.amount0_in + event.amount0_out;
-                let total_amount1 = event.amount1_in + event.amount1_out;
-                UniswapV2Event {
+            let mint_events = transform_mint_event(&mint_logs).unwrap();
+            info!("mint_events: {:#?}", mint_events);
+            let mint_uniswap_events = mint_events
+                .iter()
+                .map(|event| UniswapV2PairEvent {
                     block_time: event.date_time.to_string(),
                     block_number: event.block_number,
                     transaction_hash: event.tx_hash.clone(),
-                    event_type: "Swap".to_string(),
-                    from_address: event.sender.to_string(),
-                    to_address: event.address.to_string(),
-                    token0: "null".to_string(),
-                    token1: "null".to_string(),
-                    amount0: total_amount0.to_string(),
-                    amount1: total_amount1.to_string(),
-                }
-            })
-            .collect::<Vec<_>>();
-        csv_file.write_event(&swap_uniswap_events).unwrap();
+                    event_type: "Mint".to_string(),
+                    route_address: event.sender.to_string(),
+                    pair_address: pair_address.to_string(),
+                    amount0: event.amount0.to_string(),
+                    amount1: event.amount1.to_string(),
+                })
+                .collect::<Vec<_>>();
+            pair_events.extend(mint_uniswap_events);
+
+            let burn_events = transform_burn_event(&burn_logs).unwrap();
+            info!("burn_events: {:#?}", burn_events);
+            let burn_uniswap_events = burn_events
+                .iter()
+                .map(|event| UniswapV2PairEvent {
+                    block_time: event.date_time.to_string(),
+                    block_number: event.block_number,
+                    transaction_hash: event.tx_hash.clone(),
+                    event_type: "Burn".to_string(),
+                    route_address: event.sender.to_string(),
+                    pair_address: pair_address.to_string(),
+                    amount0: event.amount0.to_string(),
+                    amount1: event.amount1.to_string(),
+                })
+                .collect::<Vec<_>>();
+            pair_events.extend(burn_uniswap_events);
+
+            let swap_events = transform_swap_event(&swap_logs).unwrap();
+            info!("swap_events: {:#?}", swap_events);
+            let swap_uniswap_events = swap_events
+                .iter()
+                .map(|event| {
+                    let total_amount0 = event.amount0_in + event.amount0_out;
+                    let total_amount1 = event.amount1_in + event.amount1_out;
+                    UniswapV2PairEvent {
+                        block_time: event.date_time.to_string(),
+                        block_number: event.block_number,
+                        transaction_hash: event.tx_hash.clone(),
+                        event_type: "Swap".to_string(),
+                        route_address: event.sender.to_string(),
+                        pair_address: pair_address.to_string(),
+                        amount0: total_amount0.to_string(),
+                        amount1: total_amount1.to_string(),
+                    }
+                })
+                .collect::<Vec<_>>();
+            pair_events.extend(swap_uniswap_events);
+        }
+        csv_file1.write_pair_event(&pair_events).unwrap();
     }
 }

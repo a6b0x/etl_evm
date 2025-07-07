@@ -16,3 +16,4 @@
 - 封装UniswapV2执行器 250704
 - 转换UniswapV2事件日志 250705
 - 存储UniswapV2事件 250706
+- 拆分UniswapV2数据表结构 250707
