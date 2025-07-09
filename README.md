@@ -1,6 +1,18 @@
 # ETL EVM
 用于以太坊生态链上数据提取、转换和加载（ETL）。
 
+# 依赖环境
+## Infuxdb
+```bash
+docker volume create influxdb3_data
+
+docker run -it \
+  -v influxdb3_data:/var/lib/influxdb3 \
+  influxdb:3-core serve \
+  --node-id host01 \
+  --object-store file \
+  --data-dir /var/lib/influxdb3
+```
 ## 测试驱动 增量开发
 - 搭建开发框架 250625
 - 解析配置文件并打印日志 250626
