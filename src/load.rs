@@ -2,6 +2,7 @@ use csv::Writer;
 use eyre::{Context, Result};
 use serde::Serialize;
 use std::fs::File;
+
 pub struct CsvFile {
     writer: Writer<File>,
 }
@@ -83,10 +84,11 @@ mod tests {
         transform::transform_burn_event, transform::transform_mint_event,
         transform::transform_pair_created_event, transform::transform_swap_event,
     };
-    use alloy::primitives::{address,Address};
+    use alloy::primitives::{Address, address};
     use eyre::{Ok, Result};
     use log::info;
-    use std::io::Write;
+    use reqwest::Client;
+    use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 
     #[test]
     fn test_load() {
@@ -247,5 +249,43 @@ mod tests {
             pair_events.extend(swap_uniswap_events);
         }
         csv_file1.write_pair_event(&pair_events).unwrap();
+    }
+
+    #[tokio::test]
+    async fn test_request_influxdb3() {
+        let app_config = AppConfig::new().unwrap();
+        let log_level = app_config.init_log().unwrap();
+        info!("app_config.log_level: {:?}", log_level);
+
+        let auth_token = "apiv3_8tf1R_lSudpswIAe9PeY9F9tBzGI0n0V3eEdPuNSEj_MfK6z4blZyatVTgFpa26vZCqeFmhj-H8YmdRoh3In9Q";
+        let url = "http://tsdb:8181/api/v3/query_sql";
+        let params = [("db", "evm"), ("q", "SELECT * FROM uniswap_v2")];
+        let mut headers = HeaderMap::new();
+        let auth_header_name =
+            HeaderName::from_bytes(b"Authorization").expect("Invalid header name");
+        let auth_header_value =
+            HeaderValue::from_str(&format!("Bearer {}", auth_token)).expect("Invalid header value");
+        headers.insert(auth_header_name, auth_header_value);
+
+        let accept_header_name = HeaderName::from_bytes(b"Accept").expect("Invalid header name");
+        let accept_header_value =
+            HeaderValue::from_str("application/json").expect("Invalid header value");
+        headers.insert(accept_header_name, accept_header_value);
+
+        let user_agent_header_name =
+            HeaderName::from_bytes(b"User-Agent").expect("Invalid header name");
+        let user_agent_header_value =
+            HeaderValue::from_str("reqwest/0.12").expect("Invalid header value");
+        headers.insert(user_agent_header_name, user_agent_header_value);
+
+        let response = Client::new()
+            .get(url)
+            .headers(headers)
+            .query(&params)
+            .send()
+            .await
+            .unwrap();
+
+        info!("response: {:#?}", response);
     }
 }
