@@ -1,5 +1,5 @@
 use csv::Writer;
-use eyre::{Context, Result,Ok};
+use eyre::{Context, Ok, Result};
 use serde::Serialize;
 use std::fs::File;
 
@@ -84,10 +84,12 @@ mod tests {
         transform::transform_burn_event, transform::transform_mint_event,
         transform::transform_pair_created_event, transform::transform_swap_event,
     };
-    use alloy::primitives::{Address, address};
+    use alloy::primitives::{address, Address};
+    use chrono::{DateTime, Local, Utc};
+    use eyre::{ContextCompat, Result};
     use log::info;
-    use reqwest::Client;
     use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
+    use reqwest::Client;
 
     #[test]
     fn test_load() {
@@ -165,15 +167,19 @@ mod tests {
         let mut csv_file = CsvFile::new("data/pair.csv").unwrap();
         let pair_created_event1 = pair_created_event
             .iter()
-            .map(|event| UniswapV2Pair {
-                block_time: event.date_time.to_string(),
-                block_number: event.block_number,
-                transaction_hash: event.tx_hash.clone(),
-                event_type: "PairCreated".to_string(),
-                factory_address: event.factory_address.to_string(),
-                pair_adress: event.pair_address.to_string(),
-                token0: event.token0.to_string(),
-                token1: event.token1.to_string(),
+            .map(|event| {
+                let date_time = DateTime::<Utc>::from_timestamp(event.timestamp as i64, 0).unwrap();
+                let local_date_time = date_time.with_timezone(&Local);
+                UniswapV2Pair {
+                    block_time: local_date_time.to_string(),
+                    block_number: event.block_number,
+                    transaction_hash: event.tx_hash.clone(),
+                    event_type: "PairCreated".to_string(),
+                    factory_address: event.factory_address.to_string(),
+                    pair_adress: event.pair_address.to_string(),
+                    token0: event.token0.to_string(),
+                    token1: event.token1.to_string(),
+                }
             })
             .collect::<Vec<_>>();
         csv_file.write_pair(&pair_created_event1).unwrap();
@@ -196,15 +202,20 @@ mod tests {
             info!("mint_events: {:#?}", mint_events);
             let mint_uniswap_events = mint_events
                 .iter()
-                .map(|event| UniswapV2PairEvent {
-                    block_time: event.date_time.to_string(),
-                    block_number: event.block_number,
-                    transaction_hash: event.tx_hash.clone(),
-                    event_type: "Mint".to_string(),
-                    route_address: event.sender.to_string(),
-                    pair_address: pair_address.to_string(),
-                    amount0: event.amount0.to_string(),
-                    amount1: event.amount1.to_string(),
+                .map(|event| {
+                    let date_time =
+                        DateTime::<Utc>::from_timestamp(event.timestamp as i64, 0).unwrap();
+                    let local_date_time = date_time.with_timezone(&Local);
+                    UniswapV2PairEvent {
+                        block_time: local_date_time.to_string(),
+                        block_number: event.block_number,
+                        transaction_hash: event.tx_hash.clone(),
+                        event_type: "Mint".to_string(),
+                        route_address: event.sender.to_string(),
+                        pair_address: pair_address.to_string(),
+                        amount0: event.amount0.to_string(),
+                        amount1: event.amount1.to_string(),
+                    }
                 })
                 .collect::<Vec<_>>();
             pair_events.extend(mint_uniswap_events);
@@ -213,15 +224,20 @@ mod tests {
             info!("burn_events: {:#?}", burn_events);
             let burn_uniswap_events = burn_events
                 .iter()
-                .map(|event| UniswapV2PairEvent {
-                    block_time: event.date_time.to_string(),
-                    block_number: event.block_number,
-                    transaction_hash: event.tx_hash.clone(),
-                    event_type: "Burn".to_string(),
-                    route_address: event.sender.to_string(),
-                    pair_address: pair_address.to_string(),
-                    amount0: event.amount0.to_string(),
-                    amount1: event.amount1.to_string(),
+                .map(|event| {
+                    let date_time =
+                        DateTime::<Utc>::from_timestamp(event.timestamp as i64, 0).unwrap();
+                    let local_date_time = date_time.with_timezone(&Local);
+                    UniswapV2PairEvent {
+                        block_time: local_date_time.to_string(),
+                        block_number: event.block_number,
+                        transaction_hash: event.tx_hash.clone(),
+                        event_type: "Burn".to_string(),
+                        route_address: event.sender.to_string(),
+                        pair_address: pair_address.to_string(),
+                        amount0: event.amount0.to_string(),
+                        amount1: event.amount1.to_string(),
+                    }
                 })
                 .collect::<Vec<_>>();
             pair_events.extend(burn_uniswap_events);
@@ -233,8 +249,11 @@ mod tests {
                 .map(|event| {
                     let total_amount0 = event.amount0_in + event.amount0_out;
                     let total_amount1 = event.amount1_in + event.amount1_out;
+                    let date_time =
+                        DateTime::<Utc>::from_timestamp(event.timestamp as i64, 0).unwrap();
+                    let local_date_time = date_time.with_timezone(&Local);
                     UniswapV2PairEvent {
-                        block_time: event.date_time.to_string(),
+                        block_time: local_date_time.to_string(),
                         block_number: event.block_number,
                         transaction_hash: event.tx_hash.clone(),
                         event_type: "Swap".to_string(),
@@ -249,5 +268,4 @@ mod tests {
         }
         csv_file1.write_pair_event(&pair_events).unwrap();
     }
-
 }
