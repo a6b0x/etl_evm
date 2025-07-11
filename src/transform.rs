@@ -1,6 +1,7 @@
 use alloy::primitives::Address;
 use alloy::rpc::types::eth::{Block, Log};
 use chrono::{DateTime, Local, Utc};
+use env_logger::fmt::Timestamp;
 use eyre::{ContextCompat, Result};
 
 #[derive(Debug)]
@@ -36,7 +37,7 @@ pub struct PairCreatedEvent {
     pub tx_hash: String,
     pub factory_address: Address,
     pub pair_address: Address,
-    pub date_time: DateTime<Local>,
+    pub timestamp: u64,
 }
 
 pub fn transform_pair_created_event(logs: &[Log]) -> Result<Vec<PairCreatedEvent>> {
@@ -52,9 +53,7 @@ pub fn transform_pair_created_event(logs: &[Log]) -> Result<Vec<PairCreatedEvent
         let tx_hash = log.transaction_hash.unwrap().to_string();
         let factory_address = log.address();
         let pair_address = Address::from_slice(&log.data().data[12..32]);
-        let date_time = DateTime::<Utc>::from_timestamp(log.block_timestamp.unwrap() as i64, 0)
-            .context("Failed to convert timestamp to DateTime")?;
-        let local_date_time = date_time.with_timezone(&Local);
+        let timestamp = log.block_timestamp.unwrap();
 
         events.push(PairCreatedEvent {
             fun_signature,
@@ -64,7 +63,7 @@ pub fn transform_pair_created_event(logs: &[Log]) -> Result<Vec<PairCreatedEvent
             tx_hash,
             factory_address,
             pair_address,
-            date_time: local_date_time,
+            timestamp,
         });
     }
     Ok(events)
@@ -78,7 +77,7 @@ pub struct MintEvent {
     pub amount1: u128,
     pub block_number: u64,
     pub tx_hash: String,
-    pub date_time: DateTime<Local>,
+    pub timestamp: u64,
 }
 
 pub fn transform_mint_event(logs: &[Log]) -> Result<Vec<MintEvent>> {
@@ -101,9 +100,7 @@ pub fn transform_mint_event(logs: &[Log]) -> Result<Vec<MintEvent>> {
 
         let block_number = log.block_number.unwrap();
         let tx_hash = log.transaction_hash.unwrap().to_string();
-        let date_time = DateTime::<Utc>::from_timestamp(log.block_timestamp.unwrap() as i64, 0)
-            .context("Failed to convert timestamp to DateTime")?;
-        let local_date_time = date_time.with_timezone(&Local);
+        let timestamp = log.block_timestamp.unwrap();
 
         events.push(MintEvent {
             fun_signature,
@@ -112,7 +109,7 @@ pub fn transform_mint_event(logs: &[Log]) -> Result<Vec<MintEvent>> {
             amount1,
             block_number,
             tx_hash,
-            date_time: local_date_time,
+            timestamp,
         });
     }
     Ok(events)
@@ -127,7 +124,7 @@ pub struct BurnEvent {
     pub amount1: u128,
     pub block_number: u64,
     pub tx_hash: String,
-    pub date_time: DateTime<Local>,
+    pub timestamp: u64,
 }
 
 pub fn transform_burn_event(logs: &[Log]) -> Result<Vec<BurnEvent>> {
@@ -151,9 +148,7 @@ pub fn transform_burn_event(logs: &[Log]) -> Result<Vec<BurnEvent>> {
 
         let block_number = log.block_number.unwrap();
         let tx_hash = log.transaction_hash.unwrap().to_string();
-        let date_time = DateTime::<Utc>::from_timestamp(log.block_timestamp.unwrap() as i64, 0)
-            .context("Failed to convert timestamp to DateTime")?;
-        let local_date_time = date_time.with_timezone(&Local);
+        let timestamp = log.block_timestamp.unwrap();
 
         events.push(BurnEvent {
             fun_signature,
@@ -163,7 +158,7 @@ pub fn transform_burn_event(logs: &[Log]) -> Result<Vec<BurnEvent>> {
             amount1,
             block_number,
             tx_hash,
-            date_time: local_date_time,
+            timestamp,
         });
     }
     Ok(events)
@@ -180,7 +175,7 @@ pub struct SwapEvent {
     pub amount1_out: u128,
     pub block_number: u64,
     pub tx_hash: String,
-    pub date_time: DateTime<Local>,
+    pub timestamp: u64,
 }
 
 pub fn transform_swap_event(logs: &[Log]) -> Result<Vec<SwapEvent>> {
@@ -206,9 +201,7 @@ pub fn transform_swap_event(logs: &[Log]) -> Result<Vec<SwapEvent>> {
 
         let block_number = log.block_number.unwrap();
         let tx_hash = log.transaction_hash.unwrap().to_string();
-        let date_time = DateTime::<Utc>::from_timestamp(log.block_timestamp.unwrap() as i64, 0)
-            .context("Failed to convert timestamp to DateTime")?;
-        let local_date_time = date_time.with_timezone(&Local);
+        let timestamp = log.block_timestamp.unwrap();
 
         events.push(SwapEvent {
             fun_signature,
@@ -220,7 +213,7 @@ pub fn transform_swap_event(logs: &[Log]) -> Result<Vec<SwapEvent>> {
             amount1_out,
             block_number,
             tx_hash,
-            date_time: local_date_time,
+            timestamp,
         });
     }
     Ok(events)
