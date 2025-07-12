@@ -6,6 +6,7 @@ mod extract;
 mod transform;
 mod load;
 mod load_tsdb;
+mod extract_wss;
 
 #[tokio::main]
 async fn main() -> Result<()> {

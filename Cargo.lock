@@ -1599,6 +1599,7 @@ dependencies = [
  "csv",
  "env_logger",
  "eyre",
+ "futures-util",
  "log",
  "reqwest",
  "serde",
