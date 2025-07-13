@@ -1,5 +1,6 @@
 [eth]
-rpc_url = "https://reth-ethereum.ithaca.xyz/rpc"
+http_url = "https://reth-ethereum.ithaca.xyz/rpc"
+ws_url = "wss://reth-ethereum.ithaca.xyz/ws"
 chain_id = 1
 start_block = 10000000                           
 end_block = 10000005                            

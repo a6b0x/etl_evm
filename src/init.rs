@@ -11,7 +11,8 @@ pub struct AppConfig {
 
 #[derive(Debug, Deserialize)]
 pub struct EthCfg {
-    pub rpc_url: String,
+    pub http_url: String,
+    pub ws_url: String,
     pub chain_id: u64,
     pub start_block: u64,
     pub end_block: u64,
