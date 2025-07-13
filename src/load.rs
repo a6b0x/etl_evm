@@ -6,13 +6,7 @@ use std::fs::File;
 pub struct CsvFile {
     writer: Writer<File>,
 }
-#[derive(Debug, Serialize)]
-pub struct TableBlock {
-    pub block_number: u64,
-    pub tx_count: usize,
-    pub miner: String,
-    pub date_time: String,
-}
+
 #[derive(Debug, Serialize)]
 pub struct UniswapV2Pair {
     pub block_time: String,
@@ -51,12 +45,6 @@ impl CsvFile {
         Ok(Self { writer })
     }
 
-    pub fn write_block(&mut self, block: &TableBlock) -> Result<()> {
-        self.writer
-            .serialize(block)
-            .context("Failed to write block data")
-    }
-
     pub fn write_pair(&mut self, events: &[UniswapV2Pair]) -> Result<()> {
         for event in events {
             self.writer
@@ -80,7 +68,7 @@ impl CsvFile {
 mod tests {
     use super::*;
     use crate::{
-        extract::RpcClient, extract::UniswapV2, init::AppConfig, transform::transform_block,
+        extract::RpcClient, extract::UniswapV2, init::AppConfig,
         transform::transform_burn_event, transform::transform_mint_event,
         transform::transform_pair_created_event, transform::transform_swap_event,
     };
@@ -91,60 +79,13 @@ mod tests {
     use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
     use reqwest::Client;
 
-    #[test]
-    fn test_load() {
-        let mut csv_file = CsvFile::new("data/test.csv").unwrap();
-        let block = TableBlock {
-            block_number: 1,
-            tx_count: 1,
-            miner: "0x1234567890123456789012345678901234567890".to_string(),
-            date_time: "2023-01-01 00:00:00".to_string(),
-        };
-        csv_file.write_block(&block).unwrap();
-    }
-
-    #[tokio::test]
-    async fn test_load_block() {
-        let app_config = AppConfig::new().unwrap();
-        let log_level = app_config.init_log().unwrap();
-        info!("app_config.log_level: {:?}", log_level);
-
-        let rpc_client = RpcClient::new(&app_config.eth.rpc_url).unwrap();
-        let new_block_number = rpc_client.get_new_block_number().await.unwrap();
-        info!("get_new_block_number: {:?}", new_block_number);
-
-        let mut csv_file = CsvFile::new("data/block.csv").unwrap();
-
-        let new_block_data = rpc_client.get_block_data(new_block_number).await.unwrap();
-        if let Some(block) = new_block_data.as_ref() {
-            //info!("get_block_data Block.Header: {:#?}", block.header);
-            info!(
-                "get_block_data Block.Header number: {:?} timestamp: {:?} transactions.len: {:?} beneficiary: {:?}",
-                block.header.number,
-                block.header.timestamp,
-                block.transactions.len(),
-                block.header.beneficiary
-            );
-            let transformed_block = transform_block(block).unwrap();
-            info!("transformed_block: {:#?}", transformed_block);
-
-            let block = TableBlock {
-                block_number: transformed_block.block_number,
-                tx_count: transformed_block.tx_count,
-                miner: transformed_block.miner,
-                date_time: transformed_block.date_time.to_string(),
-            };
-            csv_file.write_block(&block).unwrap();
-        }
-    }
-
     #[tokio::test]
     async fn test_load_uniswapv2() {
         let app_config = AppConfig::new().unwrap();
         let log_level = app_config.init_log().unwrap();
         info!("app_config.log_level: {:?}", log_level);
 
-        let rpc_client = RpcClient::new(&app_config.eth.rpc_url).unwrap();
+        let rpc_client = RpcClient::new(&app_config.eth.http_url).unwrap();
         let router_addr = address!("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D");
         let uniswap_v2 = UniswapV2::new(rpc_client.provider.clone(), router_addr).await;
         info!(

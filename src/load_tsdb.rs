@@ -85,7 +85,7 @@ mod tests {
     use super::*;
 
     use crate::{
-        extract::RpcClient, extract::UniswapV2, init::AppConfig, transform::transform_block,
+        extract::RpcClient, extract::UniswapV2, init::AppConfig,
         transform::transform_burn_event, transform::transform_mint_event,
         transform::transform_pair_created_event, transform::transform_swap_event,
     };
@@ -150,7 +150,7 @@ mod tests {
         let url1 = "http://tsdb:8181/api/v3/write_lp?db=evm";
         let tsdb = Tsdb::new(url, auth_token);
 
-        let rpc_client = RpcClient::new(&app_config.eth.rpc_url).unwrap();
+        let rpc_client = RpcClient::new(&app_config.eth.http_url).unwrap();
         let router_addr = address!("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D");
         let uniswap_v2 = UniswapV2::new(rpc_client.provider.clone(), router_addr).await;
         info!(

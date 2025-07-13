@@ -10,8 +10,8 @@ pub struct RpcClient {
 
 impl RpcClient {
     pub fn new(url: &str) -> Result<Self> {
-        let rpc_url = url.parse()?;
-        let provider = ProviderBuilder::new().connect_http(rpc_url);
+        let http_url = url.parse()?;
+        let provider = ProviderBuilder::new().connect_http(http_url);
         let dyn_provider = provider.erased();
         Ok(Self {
             provider: dyn_provider,
@@ -162,36 +162,13 @@ mod tests {
     use log::info;
 
     #[tokio::test]
-    async fn test_rpc_client() {
-        let app_config = AppConfig::new().unwrap();
-        let log_level = app_config.init_log().unwrap();
-        info!("app_config.log_level : {:?}", log_level);
-        info!("app_config.eth: {:#?}", app_config.eth);
-
-        let rpc_client = RpcClient::new(&app_config.eth.rpc_url).unwrap();
-        let new_block_number = rpc_client.get_new_block_number().await.unwrap();
-        info!("get_new_block_number : {:?}", new_block_number);
-
-        let new_block_data = rpc_client.get_block_data(new_block_number).await.unwrap();
-        let new_block_header = new_block_data.unwrap();
-        info!(
-            "get_block_data Block.header: {:#?}",
-            new_block_header.header
-        );
-        info!(
-            "get_block_data Block.first_transaction: {:#?}",
-            new_block_header.transactions.first_transaction()
-        );
-    }
-
-    #[tokio::test]
     async fn test_uniswap_v2() {
         let app_config = AppConfig::new().unwrap();
         let log_level = app_config.init_log().unwrap();
         info!("app_config.log_level : {:?}", log_level);
         info!("app_config.eth: {:#?}", app_config.eth);
 
-        let rpc_client = RpcClient::new(&app_config.eth.rpc_url).unwrap();
+        let rpc_client = RpcClient::new(&app_config.eth.http_url).unwrap();
 
         let router_addr = address!("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D");
         let uniswap_v2 = UniswapV2::new(rpc_client.provider.clone(), router_addr).await;
