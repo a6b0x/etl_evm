@@ -4,40 +4,6 @@ use alloy::rpc::types::{Filter, Log, eth::Block};
 use alloy::sol;
 use eyre::Result;
 
-pub struct RpcClient {
-    pub provider: DynProvider,
-}
-
-impl RpcClient {
-    pub fn new(url: &str) -> Result<Self> {
-        let http_url = url.parse()?;
-        let provider = ProviderBuilder::new().connect_http(http_url);
-        let dyn_provider = provider.erased();
-        Ok(Self {
-            provider: dyn_provider,
-        })
-    }
-
-    pub async fn get_new_block_number(&self) -> Result<(u64)> {
-        let latest_block = self.provider.get_block_number().await?;
-        Ok(latest_block)
-    }
-
-    pub async fn get_block_data(&self, block_number: u64) -> Result<Option<Block>> {
-        let block_data = self
-            .provider
-            .get_block_by_number(block_number.into())
-            .full()
-            .await
-            .unwrap();
-        Ok(block_data)
-    }
-
-    pub fn provider(&self) -> &DynProvider {
-        &self.provider
-    }
-}
-
 sol!(
     #[allow(missing_docs)]
     #[sol(rpc)]
@@ -67,21 +33,20 @@ sol!(
 );
 
 pub struct UniswapV2 {
-    pub provider: DynProvider,
+    pub rpc_client: DynProvider,
     pub router_caller: UniswapV2Router::UniswapV2RouterInstance<DynProvider>,
     pub factory_caller: UniswapV2Factory::UniswapV2FactoryInstance<DynProvider>,
 }
 
-
 impl UniswapV2 {
-    pub async fn new(fprovider: DynProvider, router_address: Address) -> Self {
-        let router_contract = UniswapV2Router::new(router_address, fprovider.clone());
+    pub async fn new(rpc_client: DynProvider, router_address: Address) -> Self {
+        let router_contract = UniswapV2Router::new(router_address, rpc_client.clone());
 
         let factory_address = router_contract.factory().call().await.unwrap();
-        let factory_contract = UniswapV2Factory::new(factory_address, fprovider.clone());
+        let factory_contract = UniswapV2Factory::new(factory_address, rpc_client.clone());
 
         Self {
-            provider: fprovider,
+            rpc_client,
             router_caller: router_contract,
             factory_caller: factory_contract,
         }
@@ -108,7 +73,7 @@ impl UniswapV2 {
             .from_block(from_block)
             .to_block(to_block);
 
-        let logs = self.provider.get_logs(&filter).await?;
+        let logs = self.rpc_client.get_logs(&filter).await?;
         Ok(logs)
     }
 
@@ -139,15 +104,15 @@ impl UniswapV2 {
             .from_block(from_block)
             .to_block(to_block);
 
-        let mint_logs = self.provider.get_logs(&mint_filter).await?;
-        let burn_logs = self.provider.get_logs(&burn_filter).await?;
-        let swap_logs = self.provider.get_logs(&swap_filter).await?;
+        let mint_logs = self.rpc_client.get_logs(&mint_filter).await?;
+        let burn_logs = self.rpc_client.get_logs(&burn_filter).await?;
+        let swap_logs = self.rpc_client.get_logs(&swap_filter).await?;
 
         Ok((mint_logs, burn_logs, swap_logs))
     }
 
     pub async fn get_token_symbol(&self, token_address: Address) -> Result<String> {
-        let token_contract = ERC20Token::new(token_address, self.provider.clone());
+        let token_contract = ERC20Token::new(token_address, self.rpc_client.clone());
         let token_symbol = token_contract.symbol().call().await?;
 
         Ok(token_symbol)
@@ -160,18 +125,18 @@ mod tests {
     use super::*;
     use crate::init::AppConfig;
     use log::info;
+    use crate::extract_block::EvmBlock;
 
     #[tokio::test]
     async fn test_uniswap_v2() {
         let app_config = AppConfig::new().unwrap();
         let log_level = app_config.init_log().unwrap();
-        info!("app_config.log_level : {:?}", log_level);
-        info!("app_config.eth: {:#?}", app_config.eth);
+        info!("app_config: {:#?}", app_config);
 
-        let rpc_client = RpcClient::new(&app_config.eth.http_url).unwrap();
+        let evm_block = EvmBlock::new(&app_config.eth.http_url).await.unwrap();
 
         let router_addr = address!("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D");
-        let uniswap_v2 = UniswapV2::new(rpc_client.provider.clone(), router_addr).await;
+        let uniswap_v2 = UniswapV2::new(evm_block.rpc_client.clone(), router_addr).await;
         info!(
             "uniswap_v2 factory_caller: {:#?}",
             uniswap_v2.factory_caller
