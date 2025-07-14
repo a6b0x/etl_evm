@@ -4,17 +4,18 @@ use chrono::{DateTime, Local, Utc};
 use env_logger::fmt::Timestamp;
 use eyre::{ContextCompat, Result};
 
-
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct PairCreatedEvent {
-    pub fun_signature: String,
-    pub token0: Address,
-    pub token1: Address,
+    pub event_type: String,
+    pub function_signature: String,
+    pub token0_address: Address,
+    pub token1_address: Address,
     pub block_number: u64,
-    pub tx_hash: String,
+    pub transaction_hash: String,
     pub factory_address: Address,
     pub pair_address: Address,
-    pub timestamp: u64,
+    #[serde(serialize_with = "serialize_timestamp")]
+    pub block_timestamp: u64,
 }
 
 pub fn transform_pair_created_event(logs: &[Log]) -> Result<Vec<PairCreatedEvent>> {
@@ -23,38 +24,42 @@ pub fn transform_pair_created_event(logs: &[Log]) -> Result<Vec<PairCreatedEvent
         if log.topics().len() < 3 {
             return Err(eyre::eyre!("Invalid PairCreated event log topics length"));
         }
-        let fun_signature = log.topics()[0].to_string();
-        let token0 = Address::from_slice(&log.topics()[1][12..32]);
-        let token1 = Address::from_slice(&log.topics()[2][12..32]);
+        let function_signature = log.topics()[0].to_string();
+        let token0_address = Address::from_slice(&log.topics()[1][12..32]);
+        let token1_address = Address::from_slice(&log.topics()[2][12..32]);
         let block_number = log.block_number.unwrap();
-        let tx_hash = log.transaction_hash.unwrap().to_string();
+        let transaction_hash = log.transaction_hash.unwrap().to_string();
         let factory_address = log.address();
         let pair_address = Address::from_slice(&log.data().data[12..32]);
-        let timestamp = log.block_timestamp.unwrap();
+        let block_timestamp = log.block_timestamp.unwrap();
 
         events.push(PairCreatedEvent {
-            fun_signature,
-            token0,
-            token1,
+            event_type: "PairCreated".to_string(),
+            function_signature,
+            token0_address,
+            token1_address,
             block_number,
-            tx_hash,
+            transaction_hash,
             factory_address,
             pair_address,
-            timestamp,
+            block_timestamp,
         });
     }
     Ok(events)
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct MintEvent {
-    pub fun_signature: String,
-    pub sender: Address,
-    pub amount0: u128,
-    pub amount1: u128,
+    pub event_type: String,
+    pub function_signature: String,
+    pub caller_address: Address,
+    pub pair_address: Address,
+    pub token0_amount: u128,
+    pub token1_amount: u128,
     pub block_number: u64,
-    pub tx_hash: String,
-    pub timestamp: u64,
+    pub transaction_hash: String,
+    #[serde(serialize_with = "serialize_timestamp")]
+    pub block_timestamp: u64,
 }
 
 pub fn transform_mint_event(logs: &[Log]) -> Result<Vec<MintEvent>> {
@@ -63,8 +68,9 @@ pub fn transform_mint_event(logs: &[Log]) -> Result<Vec<MintEvent>> {
         if log.topics().len() < 2 {
             return Err(eyre::eyre!("Invalid Mint event log topics length"));
         }
-        let fun_signature = log.topics()[0].to_string();
-        let sender = Address::from_slice(&log.topics()[1][12..32]);
+        let function_signature = log.topics()[0].to_string();
+        let caller_address = Address::from_slice(&log.topics()[1][12..32]);
+        let pair_address = log.address();
 
         let log_data = log.data().data.clone();
         if log_data.len() < 48 {
@@ -72,36 +78,41 @@ pub fn transform_mint_event(logs: &[Log]) -> Result<Vec<MintEvent>> {
                 "Mint event log data length is less than 48 bytes"
             ));
         }
-        let amount0 = u128::from_be_bytes(log_data[16..32].try_into().unwrap());
-        let amount1 = u128::from_be_bytes(log_data[48..64].try_into().unwrap());
+        let token0_amount = u128::from_be_bytes(log_data[16..32].try_into().unwrap());
+        let token1_amount = u128::from_be_bytes(log_data[48..64].try_into().unwrap());
 
         let block_number = log.block_number.unwrap();
-        let tx_hash = log.transaction_hash.unwrap().to_string();
-        let timestamp = log.block_timestamp.unwrap();
+        let transaction_hash = log.transaction_hash.unwrap().to_string();
+        let block_timestamp = log.block_timestamp.unwrap();
 
         events.push(MintEvent {
-            fun_signature,
-            sender,
-            amount0,
-            amount1,
+            event_type: "Mint".to_string(),
+            function_signature,
+            caller_address,
+            pair_address,
+            token0_amount,
+            token1_amount,
             block_number,
-            tx_hash,
-            timestamp,
+            transaction_hash,
+            block_timestamp,
         });
     }
     Ok(events)
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct BurnEvent {
-    pub fun_signature: String,
-    pub sender: Address,
+    pub event_type: String,
+    pub function_signature: String,
+    pub caller_address: Address,
+    pub pair_address: Address,
     pub address: Address,
-    pub amount0: u128,
-    pub amount1: u128,
+    pub token0_amount: u128,
+    pub token1_amount: u128,
     pub block_number: u64,
-    pub tx_hash: String,
-    pub timestamp: u64,
+    pub transaction_hash: String,
+    #[serde(serialize_with = "serialize_timestamp")]
+    pub block_timestamp: u64,
 }
 
 pub fn transform_burn_event(logs: &[Log]) -> Result<Vec<BurnEvent>> {
@@ -110,9 +121,10 @@ pub fn transform_burn_event(logs: &[Log]) -> Result<Vec<BurnEvent>> {
         if log.topics().len() < 3 {
             return Err(eyre::eyre!("Invalid Burn event log topics length"));
         }
-        let fun_signature = log.topics()[0].to_string();
-        let sender = Address::from_slice(&log.topics()[1][12..32]);
+        let function_signature = log.topics()[0].to_string();
+        let caller_address = Address::from_slice(&log.topics()[1][12..32]);
         let address = Address::from_slice(&log.topics()[2][12..32]);
+        let pair_address = log.address();
 
         let log_data = log.data().data.clone();
         if log_data.len() < 64 {
@@ -120,39 +132,42 @@ pub fn transform_burn_event(logs: &[Log]) -> Result<Vec<BurnEvent>> {
                 "Burn event log data length is less than 64 bytes"
             ));
         }
-        let amount0 = u128::from_be_bytes(log_data[16..32].try_into().unwrap());
-        let amount1 = u128::from_be_bytes(log_data[48..64].try_into().unwrap());
+        let token0_amount = u128::from_be_bytes(log_data[16..32].try_into().unwrap());
+        let token1_amount = u128::from_be_bytes(log_data[48..64].try_into().unwrap());
 
         let block_number = log.block_number.unwrap();
-        let tx_hash = log.transaction_hash.unwrap().to_string();
-        let timestamp = log.block_timestamp.unwrap();
+        let transaction_hash = log.transaction_hash.unwrap().to_string();
+        let block_timestamp = log.block_timestamp.unwrap();
 
         events.push(BurnEvent {
-            fun_signature,
-            sender,
+            event_type: "Burn".to_string(),
+            function_signature,
+            caller_address,
+            pair_address,
             address,
-            amount0,
-            amount1,
+            token0_amount,
+            token1_amount,
             block_number,
-            tx_hash,
-            timestamp,
+            transaction_hash,
+            block_timestamp,
         });
     }
     Ok(events)
 }
 
-#[derive(Debug)]
+#[derive(Debug, serde::Serialize)]
 pub struct SwapEvent {
-    pub fun_signature: String,
-    pub sender: Address,
-    pub address: Address,
-    pub amount0_in: u128,
-    pub amount1_in: u128,
-    pub amount0_out: u128,
-    pub amount1_out: u128,
+    pub event_type: String,
+    pub function_signature: String,
+    pub caller_address: Address,
+    pub pair_address: Address,
+    pub receiver_address: Address,
+    pub token0_amount: u128,
+    pub token1_amount: u128,
     pub block_number: u64,
-    pub tx_hash: String,
-    pub timestamp: u64,
+    pub transaction_hash: String,
+    #[serde(serialize_with = "serialize_timestamp")]
+    pub block_timestamp: u64,
 }
 
 pub fn transform_swap_event(logs: &[Log]) -> Result<Vec<SwapEvent>> {
@@ -161,9 +176,10 @@ pub fn transform_swap_event(logs: &[Log]) -> Result<Vec<SwapEvent>> {
         if log.topics().len() < 3 {
             return Err(eyre::eyre!("Invalid Swap event log topics length"));
         }
-        let fun_signature = log.topics()[0].to_string();
-        let sender = Address::from_slice(&log.topics()[1][12..32]);
-        let address = Address::from_slice(&log.topics()[2][12..32]);
+        let function_signature = log.topics()[0].to_string();
+        let caller_address = Address::from_slice(&log.topics()[1][12..32]);
+        let receiver_address = Address::from_slice(&log.topics()[2][12..32]);
+        let pair_address = log.address();
 
         let log_data = log.data().data.clone();
         if log_data.len() < 128 {
@@ -175,43 +191,57 @@ pub fn transform_swap_event(logs: &[Log]) -> Result<Vec<SwapEvent>> {
         let amount1_in = u128::from_be_bytes(log_data[48..64].try_into().unwrap());
         let amount0_out = u128::from_be_bytes(log_data[80..96].try_into().unwrap());
         let amount1_out = u128::from_be_bytes(log_data[112..128].try_into().unwrap());
+        let token0_amount = amount0_in + amount0_out;
+        let token1_amount = amount1_in + amount1_out;
 
         let block_number = log.block_number.unwrap();
-        let tx_hash = log.transaction_hash.unwrap().to_string();
-        let timestamp = log.block_timestamp.unwrap();
+        let transaction_hash = log.transaction_hash.unwrap().to_string();
+        let block_timestamp = log.block_timestamp.unwrap();
 
         events.push(SwapEvent {
-            fun_signature,
-            sender,
-            address,
-            amount0_in,
-            amount1_in,
-            amount0_out,
-            amount1_out,
+            event_type: "Swap".to_string(),
+            function_signature,
+            caller_address,
+            pair_address,
+            receiver_address,
+            token0_amount,
+            token1_amount,
             block_number,
-            tx_hash,
-            timestamp,
+            transaction_hash,
+            block_timestamp,
         });
     }
     Ok(events)
 }
 
+fn serialize_timestamp<S>(timestamp: &u64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let timestamp = DateTime::<Utc>::from_utc(
+        chrono::NaiveDateTime::from_timestamp(*timestamp as i64, 0),
+        Utc,
+    );
+    let formatted = timestamp.format("%Y-%m-%d %H:%M:%S");
+    serializer.collect_str(&formatted)
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{extract::RpcClient, extract::UniswapV2, init::AppConfig};
+    use crate::{extract_block::EvmBlock, extract_event::UniswapV2, init::AppConfig};
     use alloy::primitives::address;
     use log::info;
 
     #[tokio::test]
-    async fn test_transform_pair_created_event() {
+    async fn test_transform_pair() {
         let app_config = AppConfig::new().unwrap();
         let log_level = app_config.init_log().unwrap();
         info!("app_config.log_level: {:?}", log_level);
 
-        let rpc_client = RpcClient::new(&app_config.eth.http_url).unwrap();
+        let evm_block = EvmBlock::new(&app_config.eth.http_url).await.unwrap();
         let router_addr = address!("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D");
-        let uniswap_v2 = UniswapV2::new(rpc_client.provider.clone(), router_addr).await;
+        let uniswap_v2 = UniswapV2::new(evm_block.rpc_client.clone(), router_addr).await;
         info!(
             "uniswap_v2 factory_caller: {:#?}",
             uniswap_v2.factory_caller
@@ -229,14 +259,14 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn test_transform_mbs_event() {
+    async fn test_transform_pair_event() {
         let app_config = AppConfig::new().unwrap();
         let log_level = app_config.init_log().unwrap();
         info!("app_config.log_level: {:?}", log_level);
 
-        let rpc_client = RpcClient::new(&app_config.eth.http_url).unwrap();
+        let evm_block = EvmBlock::new(&app_config.eth.http_url).await.unwrap();
         let router_addr = address!("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D");
-        let uniswap_v2 = UniswapV2::new(rpc_client.provider.clone(), router_addr).await;
+        let uniswap_v2 = UniswapV2::new(evm_block.rpc_client.clone(), router_addr).await;
         info!(
             "uniswap_v2 factory_caller: {:#?}",
             uniswap_v2.factory_caller
