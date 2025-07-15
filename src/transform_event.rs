@@ -164,14 +164,16 @@ pub struct SwapEvent {
     pub receiver_address: Address,
     pub token0_amount: u128,
     pub token1_amount: u128,
+    pub relative_price: f64,
     pub block_number: u64,
     pub transaction_hash: String,
     #[serde(serialize_with = "serialize_timestamp")]
     pub block_timestamp: u64,
 }
 
-pub fn transform_swap_event(logs: &[Log]) -> Result<Vec<SwapEvent>> {
+pub fn transform_swap_event(logs: &[Log],token0_decimals:u8,token1_decimals:u8) -> Result<Vec<SwapEvent>> {
     let mut events = Vec::new();
+
     for log in logs {
         if log.topics().len() < 3 {
             return Err(eyre::eyre!("Invalid Swap event log topics length"));
@@ -193,6 +195,9 @@ pub fn transform_swap_event(logs: &[Log]) -> Result<Vec<SwapEvent>> {
         let amount1_out = u128::from_be_bytes(log_data[112..128].try_into().unwrap());
         let token0_amount = amount0_in + amount0_out;
         let token1_amount = amount1_in + amount1_out;
+        let amount0 = token0_amount as f64 / 10f64.powi(token0_decimals as i32);
+        let amount1 = token1_amount as f64 / 10f64.powi(token1_decimals as i32);
+        let relative_price = amount0 / amount1;
 
         let block_number = log.block_number.unwrap();
         let transaction_hash = log.transaction_hash.unwrap().to_string();
@@ -206,6 +211,7 @@ pub fn transform_swap_event(logs: &[Log]) -> Result<Vec<SwapEvent>> {
             receiver_address,
             token0_amount,
             token1_amount,
+            relative_price,
             block_number,
             transaction_hash,
             block_timestamp,
@@ -272,18 +278,28 @@ mod tests {
             uniswap_v2.factory_caller
         );
 
-        let pair_address = address!("0xaAF2fe003BB967EB7C35A391A2401e966bdB7F95");
-        let from_block1 = 22828657;
-        let to_block1 = 22828661;
+        let weth_usdc_pair = address!("0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc");
+        let (token0_addr, token1_addr) =
+            uniswap_v2.get_tokens_address(weth_usdc_pair).await.unwrap();
+        info!("token0_addr: {:#?}", token0_addr);
+        info!("token1_addr: {:#?}", token1_addr);
+
+        let token0_symbol = uniswap_v2.get_token_symbol(token0_addr).await.unwrap();
+        let token1_symbol = uniswap_v2.get_token_symbol(token1_addr).await.unwrap();
+        info!("token0_symbol: {:#?}", token0_symbol);
+        info!("token1_symbol: {:#?}", token1_symbol);
+
+        let token0_decimals = uniswap_v2.get_token_decimals(token0_addr).await.unwrap();
+        let token1_decimals = uniswap_v2.get_token_decimals(token1_addr).await.unwrap();
+        info!("token0_decimals: {:#?}", token0_decimals);
+        info!("token1_decimals: {:#?}", token1_decimals);
+
+        let from_block1 = 22921717;
+        let to_block1 = 22921721;
         let (mint_logs, burn_logs, swap_logs) = uniswap_v2
-            .get_pair_liquidity(pair_address, from_block1, to_block1)
+            .get_pair_liquidity(weth_usdc_pair, from_block1, to_block1)
             .await
             .unwrap();
-        info!(
-            "get_pair_liquidity pair_address: {} 
-            mint_logs: {:#?} burn_logs: {:#?} swap_logs: {:#?}",
-            pair_address, mint_logs, burn_logs, swap_logs
-        );
 
         let mint_events = transform_mint_event(&mint_logs).unwrap();
         info!("mint_events: {:#?}", mint_events);
@@ -291,7 +307,7 @@ mod tests {
         let burn_events = transform_burn_event(&burn_logs).unwrap();
         info!("burn_events: {:#?}", burn_events);
 
-        let swap_events = transform_swap_event(&swap_logs).unwrap();
+        let swap_events = transform_swap_event(&swap_logs,token0_decimals,token1_decimals).unwrap();
         info!("swap_events: {:#?}", swap_events);
     }
 }
