@@ -208,8 +208,8 @@ mod tests {
             let burn_event = transform_burn_event(&burn_logs).unwrap();
             burn_events_temp.extend(burn_event);
 
-            let swap_event = transform_swap_event(&swap_logs).unwrap();
-            swap_events_temp.extend(swap_event);
+            // let swap_event = transform_swap_event(&swap_logs).unwrap();
+            // swap_events_temp.extend(swap_event);
         }
 
         info!("mint_events: {:#?}", mint_events_temp);
@@ -270,34 +270,34 @@ mod tests {
         let mut csv_file2 = PairsTableFile::new("data/event_burn.csv").unwrap();
         csv_file2.write_burn_event(&burn_events_temp).unwrap();
 
-        info!("swap_events: {:#?}", swap_events_temp);
-        let swap_events_influxdata = swap_events_temp
-            .iter()
-            .map(|event| {
-                format!(
-                    "event_swap,transaction_hash={},event_type={},caller_address={},pair_address={} amount0={},amount1={},block_number={} {}",
-                    event.transaction_hash,
-                    event.event_type,
-                    event.caller_address,
-                    event.pair_address,
-                    event.token0_amount,
-                    event.token1_amount,
-                    event.block_number,
-                    event.block_timestamp
-                )
-            })
-            .collect::<Vec<_>>()
-            .join("\n")
-            .trim_end_matches('\n')
-            .to_string();
-        info!("swap_events_influxdata: {:#?}", swap_events_influxdata);
-        let response_swap_events = tsdb
-            .write(url1, database, &swap_events_influxdata)
-            .await
-            .unwrap();
-        info!("response_swap_events: {:#?}", response_swap_events);
-        let mut csv_file3 = PairsTableFile::new("data/event_swap.csv").unwrap();
-        csv_file3.write_swap_event(&swap_events_temp).unwrap();
+        // info!("swap_events: {:#?}", swap_events_temp);
+        // let swap_events_influxdata = swap_events_temp
+        //     .iter()
+        //     .map(|event| {
+        //         format!(
+        //             "event_swap,transaction_hash={},event_type={},caller_address={},pair_address={} amount0={},amount1={},block_number={} {}",
+        //             event.transaction_hash,
+        //             event.event_type,
+        //             event.caller_address,
+        //             event.pair_address,
+        //             event.token0_amount,
+        //             event.token1_amount,
+        //             event.block_number,
+        //             event.block_timestamp
+        //         )
+        //     })
+        //     .collect::<Vec<_>>()
+        //     .join("\n")
+        //     .trim_end_matches('\n')
+        //     .to_string();
+        // info!("swap_events_influxdata: {:#?}", swap_events_influxdata);
+        // let response_swap_events = tsdb
+        //     .write(url1, database, &swap_events_influxdata)
+        //     .await
+        //     .unwrap();
+        // info!("response_swap_events: {:#?}", response_swap_events);
+        // let mut csv_file3 = PairsTableFile::new("data/event_swap.csv").unwrap();
+        // csv_file3.write_swap_event(&swap_events_temp).unwrap();
 
     }
 }

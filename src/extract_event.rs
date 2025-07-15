@@ -118,6 +118,21 @@ impl UniswapV2 {
         Ok(token_symbol)
     }
 
+    pub async fn get_tokens_address(&self, pair_address: Address) -> Result<(Address, Address)> {
+        let token_contract = UniswapV2Pair::new(pair_address, self.rpc_client.clone());
+        let token0_address = token_contract.token0().call().await?;
+        let token1_address= token_contract.token1().call().await?;
+
+        Ok((token0_address, token1_address))
+    }
+
+    pub async fn get_token_decimals(&self, token_address: Address) -> Result<u8> {
+        let token_contract = ERC20Token::new(token_address, self.rpc_client.clone());
+        let token_decimals = token_contract.decimals().call().await?;
+
+        Ok(token_decimals)
+    }
+
 }
 
 #[cfg(test)]
@@ -166,7 +181,6 @@ mod tests {
             to_block,
             pair_created_events.len()
         );
-        //info!("test_get_uniswap_v2_pair_created_events: {:#?}", events.first());
         info!("get_pair_created: {:#?}", pair_created_events);
 
         let pair_address = address!("0xaAF2fe003BB967EB7C35A391A2401e966bdB7F95");
