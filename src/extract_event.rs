@@ -1,6 +1,6 @@
-use alloy::primitives::{Address, Uint, address, keccak256};
+use alloy::primitives::{address, keccak256, Address, Uint};
 use alloy::providers::{DynProvider, Provider, ProviderBuilder};
-use alloy::rpc::types::{Filter, Log, eth::Block};
+use alloy::rpc::types::{eth::Block, Filter, Log};
 use alloy::sol;
 use eyre::Result;
 
@@ -29,13 +29,26 @@ sol!(
     #[allow(missing_docs)]
     #[sol(rpc)]
     ERC20Token,
-    "data/ERC20.json" 
+    "data/ERC20.json"
 );
 
 pub struct UniswapV2 {
     pub rpc_client: DynProvider,
     pub router_caller: UniswapV2Router::UniswapV2RouterInstance<DynProvider>,
     pub factory_caller: UniswapV2Factory::UniswapV2FactoryInstance<DynProvider>,
+}
+#[derive(Debug)]
+pub struct UniswapV2Tokens {
+    pub pair_caller: UniswapV2Pair::UniswapV2PairInstance<DynProvider>,
+    pub pair_address: Address,
+    pub token0_caller: ERC20Token::ERC20TokenInstance<DynProvider>,
+    pub token1_caller: ERC20Token::ERC20TokenInstance<DynProvider>,
+    pub token0_address: Address,
+    pub token0_decimals: u8,
+    pub token0_symbol: String,
+    pub token1_address: Address,
+    pub token1_decimals: u8,
+    pub token1_symbol: String,
 }
 
 impl UniswapV2 {
@@ -64,8 +77,6 @@ impl UniswapV2 {
     }
 
     pub async fn get_pair_created(&self, from_block: u64, to_block: u64) -> Result<Vec<Log>> {
-        //const UNISWAP_V2_FACTORY_ADDR: Address =
-        //    address!("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f");
         let event_signature = keccak256(b"PairCreated(address,address,address,uint256)");
 
         let filter = Filter::new()
@@ -111,36 +122,76 @@ impl UniswapV2 {
         Ok((mint_logs, burn_logs, swap_logs))
     }
 
-    pub async fn get_token_symbol(&self, token_address: Address) -> Result<String> {
-        let token_contract = ERC20Token::new(token_address, self.rpc_client.clone());
-        let token_symbol = token_contract.symbol().call().await?;
+    pub async fn get_token_pair(&self, token_a: Address, token_b: Address) -> Result<Address> {
+        let (token0, token1) = if token_a < token_b {
+            (token_a, token_b)
+        } else {
+            (token_b, token_a)
+        };
 
-        Ok(token_symbol)
+        let pair_address = self.factory_caller.getPair(token0, token1).call().await?;
+
+        if pair_address == Address::ZERO {
+            return Err(eyre::eyre!("Pair not found for given tokens"));
+        }
+
+        Ok(pair_address)
+    }
+}
+
+impl UniswapV2Tokens {
+    pub async fn new(pair_address: Address, rpc_client: DynProvider) -> Result<Self> {
+        let pair_caller = UniswapV2Pair::new(pair_address, rpc_client.clone());
+        let token0_address = pair_caller.token0().call().await?;
+        let token1_address = pair_caller.token1().call().await?;
+
+        let token0_caller = ERC20Token::new(token0_address, rpc_client.clone());
+        let token0_decimals = token0_caller.decimals().call().await?;
+        let token1_caller = ERC20Token::new(token1_address, rpc_client.clone());
+        let token1_decimals = token1_caller.decimals().call().await?;
+
+        let token0_symbol = token0_caller.symbol().call().await?;
+        let token1_symbol = token1_caller.symbol().call().await?;
+
+        Ok(Self {
+            pair_caller,
+            pair_address,
+            token0_caller,
+            token0_address,
+            token0_decimals,
+            token0_symbol,
+            token1_caller,
+            token1_address,
+            token1_decimals,
+            token1_symbol,
+        })
     }
 
-    pub async fn get_tokens_address(&self, pair_address: Address) -> Result<(Address, Address)> {
-        let token_contract = UniswapV2Pair::new(pair_address, self.rpc_client.clone());
-        let token0_address = token_contract.token0().call().await?;
-        let token1_address= token_contract.token1().call().await?;
+    pub async fn get_price(&self) -> Result<(f64, f64, u32)> {
+        let reserves = self.pair_caller.getReserves().call().await?;
+        let reserve0 = reserves._reserve0.to::<u128>();
+        let reserve1 = reserves._reserve1.to::<u128>();
+        let block_timestamp = reserves._blockTimestampLast;
 
-        Ok((token0_address, token1_address))
+        if reserve0 == 0 || reserve1 == 0 {
+            return Err(eyre::eyre!("Insufficient reserves"));
+        }
+
+        let price0 = (reserve1 as f64 / 10f64.powi(self.token1_decimals as i32))
+            / (reserve0 as f64 / 10f64.powi(self.token0_decimals as i32));
+
+        let price1 = 1.0 / price0;
+
+        Ok((price0, price1, block_timestamp))
     }
-
-    pub async fn get_token_decimals(&self, token_address: Address) -> Result<u8> {
-        let token_contract = ERC20Token::new(token_address, self.rpc_client.clone());
-        let token_decimals = token_contract.decimals().call().await?;
-
-        Ok(token_decimals)
-    }
-
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::extract_block::EvmBlock;
     use crate::init::AppConfig;
     use log::info;
-    use crate::extract_block::EvmBlock;
 
     #[tokio::test]
     async fn test_uniswap_v2() {
@@ -193,12 +244,7 @@ mod tests {
             .unwrap();
         info!(
             "get_pair_liquidity pair_address:{} mint_logs: {:#?} burn_logs: {:#?} swap_logs: {:#?}",
-            pair_address,
-            mint_logs, burn_logs, swap_logs
+            pair_address, mint_logs, burn_logs, swap_logs
         );
-
-        let token_addr = address!("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2");
-        let token_name = uniswap_v2.get_token_symbol(token_addr).await.unwrap();
-        info!("get_token_symbol: {:?}", token_name);
     }
 }

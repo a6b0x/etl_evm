@@ -171,7 +171,11 @@ pub struct SwapEvent {
     pub block_timestamp: u64,
 }
 
-pub fn transform_swap_event(logs: &[Log],token0_decimals:u8,token1_decimals:u8) -> Result<Vec<SwapEvent>> {
+pub fn transform_swap_event(
+    logs: &[Log],
+    token0_decimals: u8,
+    token1_decimals: u8,
+) -> Result<Vec<SwapEvent>> {
     let mut events = Vec::new();
 
     for log in logs {
@@ -224,10 +228,7 @@ fn serialize_timestamp<S>(timestamp: &u64, serializer: S) -> Result<S::Ok, S::Er
 where
     S: serde::Serializer,
 {
-    let timestamp = DateTime::<Utc>::from_utc(
-        chrono::NaiveDateTime::from_timestamp(*timestamp as i64, 0),
-        Utc,
-    );
+    let timestamp = DateTime::<Utc>::from_timestamp(*timestamp as i64, 0).unwrap();
     let formatted = timestamp.format("%Y-%m-%d %H:%M:%S");
     serializer.collect_str(&formatted)
 }
@@ -235,8 +236,13 @@ where
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::{extract_block::EvmBlock, extract_event::UniswapV2, init::AppConfig};
+    use crate::{
+        extract_block::EvmBlock,
+        extract_event::{UniswapV2, UniswapV2Tokens},
+        init::AppConfig,
+    };
     use alloy::primitives::address;
+    use chrono::{DateTime, Local, Utc};
     use log::info;
 
     #[tokio::test]
@@ -279,20 +285,25 @@ mod tests {
         );
 
         let weth_usdc_pair = address!("0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc");
-        let (token0_addr, token1_addr) =
-            uniswap_v2.get_tokens_address(weth_usdc_pair).await.unwrap();
-        info!("token0_addr: {:#?}", token0_addr);
-        info!("token1_addr: {:#?}", token1_addr);
+        let uniswap_v2_tokens = UniswapV2Tokens::new(weth_usdc_pair, evm_block.rpc_client)
+            .await
+            .unwrap();
+        info!("uniswap_v2_tokens: {:#?}", uniswap_v2_tokens);
+        let (price0, price1, timestamp) = uniswap_v2_tokens.get_price().await.unwrap();
+        let date_time = DateTime::<Utc>::from_timestamp(timestamp as i64, 0).unwrap();
+        let local_date_time = date_time.with_timezone(&Local);
+        info!(
+            "price0: {:?} \n price1: {:?} \n local_date_time: {:?}",
+            price0, price1, local_date_time
+        );
 
-        let token0_symbol = uniswap_v2.get_token_symbol(token0_addr).await.unwrap();
-        let token1_symbol = uniswap_v2.get_token_symbol(token1_addr).await.unwrap();
-        info!("token0_symbol: {:#?}", token0_symbol);
-        info!("token1_symbol: {:#?}", token1_symbol);
-
-        let token0_decimals = uniswap_v2.get_token_decimals(token0_addr).await.unwrap();
-        let token1_decimals = uniswap_v2.get_token_decimals(token1_addr).await.unwrap();
-        info!("token0_decimals: {:#?}", token0_decimals);
-        info!("token1_decimals: {:#?}", token1_decimals);
+        let weth_addr = address!("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2");
+        let botto_addr = address!("0x9DFAD1b7102D46b1b197b90095B5c4E9f5845BBA");
+        let pair_addr = uniswap_v2
+            .get_token_pair(weth_addr, botto_addr)
+            .await
+            .unwrap();
+        info!("pair_addr: {:?}", pair_addr);
 
         let from_block1 = 22921717;
         let to_block1 = 22921721;
@@ -307,7 +318,12 @@ mod tests {
         let burn_events = transform_burn_event(&burn_logs).unwrap();
         info!("burn_events: {:#?}", burn_events);
 
-        let swap_events = transform_swap_event(&swap_logs,token0_decimals,token1_decimals).unwrap();
+        let swap_events = transform_swap_event(
+            &swap_logs,
+            uniswap_v2_tokens.token0_decimals,
+            uniswap_v2_tokens.token1_decimals,
+        )
+        .unwrap();
         info!("swap_events: {:#?}", swap_events);
     }
 }
