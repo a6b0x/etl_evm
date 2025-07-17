@@ -14,6 +14,7 @@ sol!(
 sol!(
     #[allow(missing_docs)]
     #[sol(rpc)]
+    #[derive(Debug)] 
     UniswapV2Factory,
     "data/UniswapV2Factory.json"
 );
@@ -49,6 +50,7 @@ pub struct UniswapV2Tokens {
     pub token1_address: Address,
     pub token1_decimals: u8,
     pub token1_symbol: String,
+    pub block_number: Option<u64>,
 }
 
 impl UniswapV2 {
@@ -77,6 +79,10 @@ impl UniswapV2 {
     }
 
     pub async fn get_pair_created(&self, from_block: u64, to_block: u64) -> Result<Vec<Log>> {
+        // let filter = self
+        //     .factory_caller
+        //     .PairCreated_filter()
+        //     .topic3(pair_address);
         let event_signature = keccak256(b"PairCreated(address,address,address,uint256)");
 
         let filter = Filter::new()
@@ -137,6 +143,28 @@ impl UniswapV2 {
 
         Ok(pair_address)
     }
+    pub async fn get_token_first_block(&self, token0_address: Address,token1_address: Address,from_block:u64,to_block: u64) -> Result<(u64, u64)> {
+        let filter = self
+            .factory_caller
+            .PairCreated_filter()
+            .topic1(token0_address)
+            .topic2(token1_address)
+            .from_block(from_block)
+            .to_block(to_block);
+
+        let logs =filter.query().await?;
+        let (_, log) = logs
+            .into_iter()
+            .next()
+            .ok_or_else(|| eyre::eyre!("PairCreated log not found"))?;
+        let block_number = log.block_number
+            .ok_or_else(|| eyre::eyre!("Missing block number in log"))?;
+        let block_timestamp = log
+            .block_timestamp
+            .ok_or_else(|| eyre::eyre!("Missing timestamp in log"))?;
+
+        Ok((block_number, block_timestamp))
+    }
 }
 
 impl UniswapV2Tokens {
@@ -164,6 +192,7 @@ impl UniswapV2Tokens {
             token1_address,
             token1_decimals,
             token1_symbol,
+            block_number: None, 
         })
     }
 
@@ -184,6 +213,7 @@ impl UniswapV2Tokens {
 
         Ok((price0, price1, block_timestamp))
     }
+
 }
 
 #[cfg(test)]

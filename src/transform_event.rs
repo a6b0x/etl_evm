@@ -292,10 +292,12 @@ mod tests {
         let (price0, price1, timestamp) = uniswap_v2_tokens.get_price().await.unwrap();
         let date_time = DateTime::<Utc>::from_timestamp(timestamp as i64, 0).unwrap();
         let local_date_time = date_time.with_timezone(&Local);
+
         info!(
             "price0: {:?} \n price1: {:?} \n local_date_time: {:?}",
             price0, price1, local_date_time
         );
+      
 
         let weth_addr = address!("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2");
         let botto_addr = address!("0x9DFAD1b7102D46b1b197b90095B5c4E9f5845BBA");
@@ -304,6 +306,15 @@ mod tests {
             .await
             .unwrap();
         info!("pair_addr: {:?}", pair_addr);
+
+
+        let token0_addr =address!("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
+        let token1_addr =address!("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2");
+        let from_block = 10008350;
+        let to_block = 10008360;
+
+        let (first_block, block_timestamp) = uniswap_v2.get_token_first_block(token0_addr,token1_addr,from_block,to_block).await.unwrap();
+        info!("first_block: {:?} \n block_timestamp: {:?}", first_block, block_timestamp);
 
         let from_block1 = 22921717;
         let to_block1 = 22921721;
