@@ -1,9 +1,9 @@
+use crate::transform_event::{BurnEvent, MintEvent, PairCreatedEvent, SwapEvent};
 use csv::Writer;
+use eyre::{Context, Result};
 use reqwest::header::{HeaderMap, HeaderName, HeaderValue};
 use reqwest::Client;
 use std::fs::File;
-use eyre::{Context, Result};
-use crate::transform_event::{PairCreatedEvent,MintEvent,BurnEvent,SwapEvent};
 pub struct PairsTableTsdb {
     pub Influx_client: Client,
 }
@@ -40,12 +40,7 @@ impl PairsTableTsdb {
         Ok(response)
     }
 
-    pub async fn write(
-        &self,
-        url: &str,
-        database: &str,
-        data: &str,
-    ) -> Result<String, reqwest::Error> {
+    pub async fn write(&self, url: &str, data: &str) -> Result<String, reqwest::Error> {
         let response = self
             .Influx_client
             .post(url)
@@ -108,9 +103,7 @@ impl PairsTableFile {
         }
         Ok(())
     }
-
 }
-
 
 #[cfg(test)]
 mod tests {
@@ -118,7 +111,7 @@ mod tests {
 
     use crate::{
         extract_block::EvmBlock,
-        extract_event::{ERC20Token::new, UniswapV2, UniswapV2Pair::mintCall},
+        extract_event::{ERC20Token::new, UniswapV2, UniswapV2Pair::mintCall, UniswapV2Tokens},
         init::AppConfig,
         transform_event::{
             transform_burn_event, transform_mint_event, transform_pair_created_event,
@@ -128,6 +121,7 @@ mod tests {
     use alloy::primitives::{address, Address};
     use chrono::{DateTime, Local, TimeZone, Utc};
     use eyre::{Ok, Result};
+    use futures_util::StreamExt;
     use log::info;
 
     #[tokio::test]
@@ -144,7 +138,7 @@ mod tests {
 
         let evm_block = EvmBlock::new(&app_config.eth.http_url).await.unwrap();
         let router_addr = address!("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D");
-        let uniswap_v2 = UniswapV2::new(evm_block.rpc_client.clone(), router_addr).await;
+        let uniswap_v2 = UniswapV2::new(evm_block.provider.clone(), router_addr).await;
         info!(
             "uniswap_v2 factory_caller: {:#?}",
             uniswap_v2.factory_caller
@@ -182,15 +176,17 @@ mod tests {
             pair_created_event_influx_data
         );
         let response_pair_created_event = tsdb
-            .write(url1, database, &pair_created_event_influx_data)
+            .write(url1, &pair_created_event_influx_data)
             .await
             .unwrap();
         info!(
             "response_pair_created_event: {:#?}",
             response_pair_created_event
         );
-         let mut csv_file0 = PairsTableFile::new("data/event_create.csv").unwrap();
-        csv_file0.write_pair_created_event(&pair_created_event).unwrap();
+        let mut csv_file0 = PairsTableFile::new("data/event_create.csv").unwrap();
+        csv_file0
+            .write_pair_created_event(&pair_created_event)
+            .unwrap();
 
         let mut mint_events_temp: Vec<MintEvent> = Vec::new();
         let mut burn_events_temp: Vec<BurnEvent> = Vec::new();
@@ -233,10 +229,7 @@ mod tests {
             .trim_end_matches('\n')
             .to_string();
         info!("mint_events_influxdata: {:#?}", mint_events_influxdata);
-        let response_mint_events = tsdb
-            .write(url1, database, &mint_events_influxdata)
-            .await
-            .unwrap();
+        let response_mint_events = tsdb.write(url1, &mint_events_influxdata).await.unwrap();
         info!("response_mint_events: {:#?}", response_mint_events);
         let mut csv_file1 = PairsTableFile::new("data/event_mint.csv").unwrap();
         csv_file1.write_mint_event(&mint_events_temp).unwrap();
@@ -262,10 +255,7 @@ mod tests {
             .trim_end_matches('\n')
             .to_string();
         info!("influxdata2: {:#?}", burn_events_influxdata);
-        let response_burn_events = tsdb
-            .write(url1, database, &burn_events_influxdata)
-            .await
-            .unwrap();
+        let response_burn_events = tsdb.write(url1, &burn_events_influxdata).await.unwrap();
         info!("response_burn_events: {:#?}", response_burn_events);
         let mut csv_file2 = PairsTableFile::new("data/event_burn.csv").unwrap();
         csv_file2.write_burn_event(&burn_events_temp).unwrap();
@@ -298,6 +288,65 @@ mod tests {
         // info!("response_swap_events: {:#?}", response_swap_events);
         // let mut csv_file3 = PairsTableFile::new("data/event_swap.csv").unwrap();
         // csv_file3.write_swap_event(&swap_events_temp).unwrap();
+    }
 
+    #[tokio::test]
+    async fn test_load_swap_event() -> Result<()> {
+        let app_config = AppConfig::new().unwrap();
+        let log_level = app_config.init_log().unwrap();
+        info!("app_config: {:#?}", app_config);
+
+        let evm_block = EvmBlock::new(&app_config.eth.ws_url).await.unwrap();
+        let weth_usdc_pair = address!("0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc");
+        let uniswap_v2_tokens = UniswapV2Tokens::new(weth_usdc_pair, evm_block.provider)
+            .await
+            .unwrap();
+        info!("uniswap_v2_tokens: {:#?}", uniswap_v2_tokens);
+
+        let tsdb = PairsTableTsdb::new(&app_config.tsdb.auth_token);
+
+        let mut stream = uniswap_v2_tokens.subscribe_swap_events().await?;
+        while let Some(log) = stream.next().await {
+            //info!("Received log: {:#?}", log);
+            let swap_event = transform_swap_event(
+                &[log],
+                uniswap_v2_tokens.token0_decimals,
+                uniswap_v2_tokens.token1_decimals,
+            )
+            .unwrap();
+            info!("swap_event: {:#?}", swap_event);
+
+            let swap_event_influxdata = swap_event
+            .iter()
+            .map(|e| {
+            format!("swap_event1,pair_address={},caller_address={},receiver_address={},transaction_hash={} \
+                token0_amount={},token1_amount={},token0_amounts={},token1_amounts={},token0_token1={},token1_token0={},block_number={} {}",
+                e.pair_address,
+                e.caller_address,
+                e.receiver_address,
+                e.transaction_hash,
+                e.token0_amount,
+                e.token1_amount,
+                e.token0_amounts,
+                e.token1_amounts,
+                e.token0_token1,
+                e.token1_token0,
+                e.block_number,
+                e.block_timestamp
+            ) })
+            .collect::<Vec<_>>()
+            .join("\n")
+            .trim_end_matches('\n')
+            .to_string();
+            info!("swap_event_influxdata: {:#?}", swap_event_influxdata);
+
+            let response_swap_events = tsdb
+                .write(&app_config.tsdb.write_url, &swap_event_influxdata)
+                .await
+                .unwrap();
+            info!("response_swap_events: {:#?}", response_swap_events);
+        }
+
+        Ok(())
     }
 }

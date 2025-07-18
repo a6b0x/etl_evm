@@ -4,7 +4,7 @@ use alloy::rpc::types::eth::Header;
 use eyre::Result;
 use futures_util::StreamExt;
 pub struct EvmBlock {
-    pub rpc_client: DynProvider,
+    pub provider: DynProvider,
 }
 
 impl EvmBlock {
@@ -13,30 +13,30 @@ impl EvmBlock {
             let ws_connect = WsConnect::new(url);
             let ws_provider = ProviderBuilder::new().connect_ws(ws_connect).await?;
             Ok(Self {
-                rpc_client: ws_provider.erased(),
+                provider: ws_provider.erased(),
             })
         } else {
             let http_url = url.parse()?;
             let http_provider = ProviderBuilder::new().connect_http(http_url);
             Ok(Self {
-                rpc_client: http_provider.erased(),
+                provider: http_provider.erased(),
             })
         }
     }
 
     pub async fn subscribe_block_header(&self) -> Result<impl StreamExt<Item = Header>> {
-        let sub = self.rpc_client.subscribe_blocks().await?;
+        let sub = self.provider.subscribe_blocks().await?;
         Ok(sub.into_stream())
     }
 
     pub async fn get_latest_block_number(&self) -> Result<(u64)> {
-        let latest_block_number = self.rpc_client.get_block_number().await?;
+        let latest_block_number = self.provider.get_block_number().await?;
         Ok(latest_block_number)
     }
 
     pub async fn get_block_by_number(&self, block_number: u64) -> Result<Option<Block>> {
         let block_raw_data = self
-            .rpc_client
+            .provider
             .get_block_by_number(block_number.into())
             .full()
             .await

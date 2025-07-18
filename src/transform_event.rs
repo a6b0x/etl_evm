@@ -18,6 +18,63 @@ pub struct PairCreatedEvent {
     pub block_timestamp: u64,
 }
 
+#[derive(Debug, serde::Serialize)]
+pub struct MintEvent {
+    pub event_type: String,
+    pub function_signature: String,
+    pub caller_address: Address,
+    pub pair_address: Address,
+    pub token0_amount: u128,
+    pub token1_amount: u128,
+    pub block_number: u64,
+    pub transaction_hash: String,
+    #[serde(serialize_with = "serialize_timestamp")]
+    pub block_timestamp: u64,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct BurnEvent {
+    pub event_type: String,
+    pub function_signature: String,
+    pub caller_address: Address,
+    pub pair_address: Address,
+    pub address: Address,
+    pub token0_amount: u128,
+    pub token1_amount: u128,
+    pub block_number: u64,
+    pub transaction_hash: String,
+    #[serde(serialize_with = "serialize_timestamp")]
+    pub block_timestamp: u64,
+}
+
+#[derive(Debug, serde::Serialize)]
+pub struct SwapEvent {
+    pub event_type: String,
+    pub function_signature: String,
+    pub caller_address: Address,
+    pub pair_address: Address,
+    pub receiver_address: Address,
+    pub token0_amount: u128,
+    pub token1_amount: u128,
+    pub token0_amounts: f64,
+    pub token1_amounts: f64,
+    pub token0_token1: f64,
+    pub token1_token0: f64,
+    pub block_number: u64,
+    pub transaction_hash: String,
+    #[serde(serialize_with = "serialize_timestamp")]
+    pub block_timestamp: u64,
+}
+
+fn serialize_timestamp<S>(timestamp: &u64, serializer: S) -> Result<S::Ok, S::Error>
+where
+    S: serde::Serializer,
+{
+    let timestamp = DateTime::<Utc>::from_timestamp(*timestamp as i64, 0).unwrap();
+    let formatted = timestamp.format("%Y-%m-%d %H:%M:%S");
+    serializer.collect_str(&formatted)
+}
+
 pub fn transform_pair_created_event(logs: &[Log]) -> Result<Vec<PairCreatedEvent>> {
     let mut events = Vec::new();
     for log in logs {
@@ -46,20 +103,6 @@ pub fn transform_pair_created_event(logs: &[Log]) -> Result<Vec<PairCreatedEvent
         });
     }
     Ok(events)
-}
-
-#[derive(Debug, serde::Serialize)]
-pub struct MintEvent {
-    pub event_type: String,
-    pub function_signature: String,
-    pub caller_address: Address,
-    pub pair_address: Address,
-    pub token0_amount: u128,
-    pub token1_amount: u128,
-    pub block_number: u64,
-    pub transaction_hash: String,
-    #[serde(serialize_with = "serialize_timestamp")]
-    pub block_timestamp: u64,
 }
 
 pub fn transform_mint_event(logs: &[Log]) -> Result<Vec<MintEvent>> {
@@ -98,21 +141,6 @@ pub fn transform_mint_event(logs: &[Log]) -> Result<Vec<MintEvent>> {
         });
     }
     Ok(events)
-}
-
-#[derive(Debug, serde::Serialize)]
-pub struct BurnEvent {
-    pub event_type: String,
-    pub function_signature: String,
-    pub caller_address: Address,
-    pub pair_address: Address,
-    pub address: Address,
-    pub token0_amount: u128,
-    pub token1_amount: u128,
-    pub block_number: u64,
-    pub transaction_hash: String,
-    #[serde(serialize_with = "serialize_timestamp")]
-    pub block_timestamp: u64,
 }
 
 pub fn transform_burn_event(logs: &[Log]) -> Result<Vec<BurnEvent>> {
@@ -155,22 +183,6 @@ pub fn transform_burn_event(logs: &[Log]) -> Result<Vec<BurnEvent>> {
     Ok(events)
 }
 
-#[derive(Debug, serde::Serialize)]
-pub struct SwapEvent {
-    pub event_type: String,
-    pub function_signature: String,
-    pub caller_address: Address,
-    pub pair_address: Address,
-    pub receiver_address: Address,
-    pub token0_amount: u128,
-    pub token1_amount: u128,
-    pub relative_price: f64,
-    pub block_number: u64,
-    pub transaction_hash: String,
-    #[serde(serialize_with = "serialize_timestamp")]
-    pub block_timestamp: u64,
-}
-
 pub fn transform_swap_event(
     logs: &[Log],
     token0_decimals: u8,
@@ -199,9 +211,10 @@ pub fn transform_swap_event(
         let amount1_out = u128::from_be_bytes(log_data[112..128].try_into().unwrap());
         let token0_amount = amount0_in + amount0_out;
         let token1_amount = amount1_in + amount1_out;
-        let amount0 = token0_amount as f64 / 10f64.powi(token0_decimals as i32);
-        let amount1 = token1_amount as f64 / 10f64.powi(token1_decimals as i32);
-        let relative_price = amount0 / amount1;
+        let token0_amounts = token0_amount as f64 / 10f64.powi(token0_decimals as i32);
+        let token1_amounts = token1_amount as f64 / 10f64.powi(token1_decimals as i32);
+        let token0_token1 = token0_amounts / token1_amounts;
+        let token1_token0 = token1_amounts / token0_amounts;
 
         let block_number = log.block_number.unwrap();
         let transaction_hash = log.transaction_hash.unwrap().to_string();
@@ -215,22 +228,16 @@ pub fn transform_swap_event(
             receiver_address,
             token0_amount,
             token1_amount,
-            relative_price,
+            token0_amounts,
+            token1_amounts,
+            token0_token1,
+            token1_token0,
             block_number,
             transaction_hash,
             block_timestamp,
         });
     }
     Ok(events)
-}
-
-fn serialize_timestamp<S>(timestamp: &u64, serializer: S) -> Result<S::Ok, S::Error>
-where
-    S: serde::Serializer,
-{
-    let timestamp = DateTime::<Utc>::from_timestamp(*timestamp as i64, 0).unwrap();
-    let formatted = timestamp.format("%Y-%m-%d %H:%M:%S");
-    serializer.collect_str(&formatted)
 }
 
 #[cfg(test)]
@@ -253,7 +260,7 @@ mod tests {
 
         let evm_block = EvmBlock::new(&app_config.eth.http_url).await.unwrap();
         let router_addr = address!("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D");
-        let uniswap_v2 = UniswapV2::new(evm_block.rpc_client.clone(), router_addr).await;
+        let uniswap_v2 = UniswapV2::new(evm_block.provider.clone(), router_addr).await;
         info!(
             "uniswap_v2 factory_caller: {:#?}",
             uniswap_v2.factory_caller
@@ -278,26 +285,24 @@ mod tests {
 
         let evm_block = EvmBlock::new(&app_config.eth.http_url).await.unwrap();
         let router_addr = address!("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D");
-        let uniswap_v2 = UniswapV2::new(evm_block.rpc_client.clone(), router_addr).await;
+        let uniswap_v2 = UniswapV2::new(evm_block.provider.clone(), router_addr).await;
         info!(
             "uniswap_v2 factory_caller: {:#?}",
             uniswap_v2.factory_caller
         );
 
         let weth_usdc_pair = address!("0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc");
-        let uniswap_v2_tokens = UniswapV2Tokens::new(weth_usdc_pair, evm_block.rpc_client)
+        let uniswap_v2_tokens = UniswapV2Tokens::new(weth_usdc_pair, evm_block.provider)
             .await
             .unwrap();
         info!("uniswap_v2_tokens: {:#?}", uniswap_v2_tokens);
+
         let (price0, price1, timestamp) = uniswap_v2_tokens.get_price().await.unwrap();
         let date_time = DateTime::<Utc>::from_timestamp(timestamp as i64, 0).unwrap();
         let local_date_time = date_time.with_timezone(&Local);
-
-        info!(
-            "price0: {:?} \n price1: {:?} \n local_date_time: {:?}",
-            price0, price1, local_date_time
-        );
-      
+        info!("price0: {:?} ", price0);
+        info!("price1: {:?} ", price1);
+        info!("local_date_time: {:?} ", local_date_time);
 
         let weth_addr = address!("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2");
         let botto_addr = address!("0x9DFAD1b7102D46b1b197b90095B5c4E9f5845BBA");
@@ -305,16 +310,17 @@ mod tests {
             .get_token_pair(weth_addr, botto_addr)
             .await
             .unwrap();
-        info!("pair_addr: {:?}", pair_addr);
+        info!("get_token_pair: {:?}", pair_addr);
 
-
-        let token0_addr =address!("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
-        let token1_addr =address!("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2");
+        let token0_addr = address!("0xA0b86991c6218b36c1d19D4a2e9Eb0cE3606eB48");
+        let token1_addr = address!("0xC02aaA39b223FE8D0A0e5C4F27eAD9083C756Cc2");
         let from_block = 10008350;
         let to_block = 10008360;
-
-        let (first_block, block_timestamp) = uniswap_v2.get_token_first_block(token0_addr,token1_addr,from_block,to_block).await.unwrap();
-        info!("first_block: {:?} \n block_timestamp: {:?}", first_block, block_timestamp);
+        let (first_block, block_timestamp) = uniswap_v2
+            .get_token_first_block(token0_addr, token1_addr, from_block, to_block)
+            .await
+            .unwrap();
+        info!("first_block: {:?} ", first_block);
 
         let from_block1 = 22921717;
         let to_block1 = 22921721;
@@ -325,10 +331,8 @@ mod tests {
 
         let mint_events = transform_mint_event(&mint_logs).unwrap();
         info!("mint_events: {:#?}", mint_events);
-
         let burn_events = transform_burn_event(&burn_logs).unwrap();
         info!("burn_events: {:#?}", burn_events);
-
         let swap_events = transform_swap_event(
             &swap_logs,
             uniswap_v2_tokens.token0_decimals,
@@ -337,4 +341,5 @@ mod tests {
         .unwrap();
         info!("swap_events: {:#?}", swap_events);
     }
+
 }

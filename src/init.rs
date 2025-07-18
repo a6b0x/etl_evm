@@ -1,4 +1,4 @@
-use config::{Config, File, builder};
+use config::{builder, Config, File};
 use eyre::{Context, Result};
 use log::LevelFilter;
 use serde::Deserialize;
@@ -6,7 +6,8 @@ use serde::Deserialize;
 #[derive(Debug, Deserialize)]
 pub struct AppConfig {
     pub eth: EthCfg,
-    pub log: Option<LogCfg>, 
+    pub log: Option<LogCfg>,
+    pub tsdb: TsdbCfg,
 }
 
 #[derive(Debug, Deserialize)]
@@ -22,6 +23,13 @@ pub struct EthCfg {
 #[derive(Debug, Deserialize)]
 pub struct LogCfg {
     pub level: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct TsdbCfg {
+    pub query_url: String,
+    pub write_url: String,
+    pub auth_token: String,
 }
 
 impl AppConfig {
@@ -46,12 +54,12 @@ impl AppConfig {
                 "info" => LevelFilter::Info,
                 "debug" => LevelFilter::Debug,
                 "trace" => LevelFilter::Trace,
-                _ => LevelFilter::Info, 
+                _ => LevelFilter::Info,
             },
-            None => LevelFilter::Info, 
+            None => LevelFilter::Info,
         };
         env_logger::Builder::new().filter_level(log_level).init();
-        Ok(log_level) 
+        Ok(log_level)
     }
 }
 
@@ -64,6 +72,6 @@ mod tests {
     fn test_app_config() {
         let app_config = AppConfig::new().unwrap();
         let log_level = app_config.init_log().unwrap();
-        info!("test_app_config log_level: {:?}", log_level); 
+        info!("test_app_config log_level: {:?}", log_level);
     }
 }
