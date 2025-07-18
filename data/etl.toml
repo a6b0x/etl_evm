@@ -7,3 +7,7 @@ end_block = 10000005
 output_file = "transactions.csv"                
 [log]
 level = "debug" 
+[tsdb]
+query_url = "http://tsdb:8181/api/v3/query_sql"
+write_url = "http://tsdb:8181/api/v3/write_lp?db=evm_uniswap_v2"
+auth_token = "apiv3_di3lJBckgHFT2cJc5VLkKwsWsVEwI3XZsefjifwwLNR8kruGfhazhZ3tGBvIPZIquaFlbnqHJgTDdaLUFgIzrw"

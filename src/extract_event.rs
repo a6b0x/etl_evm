@@ -3,6 +3,7 @@ use alloy::providers::{DynProvider, Provider, ProviderBuilder};
 use alloy::rpc::types::{eth::Block, Filter, Log};
 use alloy::sol;
 use eyre::Result;
+use futures_util::StreamExt;
 
 sol!(
     #[allow(missing_docs)]
@@ -34,12 +35,13 @@ sol!(
 );
 
 pub struct UniswapV2 {
-    pub rpc_client: DynProvider,
+    pub provider: DynProvider,
     pub router_caller: UniswapV2Router::UniswapV2RouterInstance<DynProvider>,
     pub factory_caller: UniswapV2Factory::UniswapV2FactoryInstance<DynProvider>,
 }
 #[derive(Debug)]
 pub struct UniswapV2Tokens {
+    pub provider: DynProvider,
     pub pair_caller: UniswapV2Pair::UniswapV2PairInstance<DynProvider>,
     pub pair_address: Address,
     pub token0_caller: ERC20Token::ERC20TokenInstance<DynProvider>,
@@ -54,14 +56,14 @@ pub struct UniswapV2Tokens {
 }
 
 impl UniswapV2 {
-    pub async fn new(rpc_client: DynProvider, router_address: Address) -> Self {
-        let router_contract = UniswapV2Router::new(router_address, rpc_client.clone());
+    pub async fn new(provider: DynProvider, router_address: Address) -> Self {
+        let router_contract = UniswapV2Router::new(router_address, provider.clone());
 
         let factory_address = router_contract.factory().call().await.unwrap();
-        let factory_contract = UniswapV2Factory::new(factory_address, rpc_client.clone());
+        let factory_contract = UniswapV2Factory::new(factory_address, provider.clone());
 
         Self {
-            rpc_client,
+            provider,
             router_caller: router_contract,
             factory_caller: factory_contract,
         }
@@ -90,7 +92,7 @@ impl UniswapV2 {
             .from_block(from_block)
             .to_block(to_block);
 
-        let logs = self.rpc_client.get_logs(&filter).await?;
+        let logs = self.provider.get_logs(&filter).await?;
         Ok(logs)
     }
 
@@ -121,9 +123,9 @@ impl UniswapV2 {
             .from_block(from_block)
             .to_block(to_block);
 
-        let mint_logs = self.rpc_client.get_logs(&mint_filter).await?;
-        let burn_logs = self.rpc_client.get_logs(&burn_filter).await?;
-        let swap_logs = self.rpc_client.get_logs(&swap_filter).await?;
+        let mint_logs = self.provider.get_logs(&mint_filter).await?;
+        let burn_logs = self.provider.get_logs(&burn_filter).await?;
+        let swap_logs = self.provider.get_logs(&swap_filter).await?;
 
         Ok((mint_logs, burn_logs, swap_logs))
     }
@@ -165,23 +167,35 @@ impl UniswapV2 {
 
         Ok((block_number, block_timestamp))
     }
+
+    // pub async fn subscribe_swap_events(&self) -> Result<impl StreamExt<Item = Log>> {
+    //     let filter = Filter::new()
+    //         .event_signature(keccak256("Swap(address,uint256,uint256,uint256,uint256,address)"));
+        
+    //     self.rpc_client
+    //         .subscribe_logs(&filter)
+    //         .await
+    //         .map_err(|e| eyre::eyre!(e))
+    // }
+
 }
 
 impl UniswapV2Tokens {
-    pub async fn new(pair_address: Address, rpc_client: DynProvider) -> Result<Self> {
-        let pair_caller = UniswapV2Pair::new(pair_address, rpc_client.clone());
+    pub async fn new(pair_address: Address, provider: DynProvider) -> Result<Self> {
+        let pair_caller = UniswapV2Pair::new(pair_address, provider.clone());
         let token0_address = pair_caller.token0().call().await?;
         let token1_address = pair_caller.token1().call().await?;
 
-        let token0_caller = ERC20Token::new(token0_address, rpc_client.clone());
+        let token0_caller = ERC20Token::new(token0_address, provider.clone());
         let token0_decimals = token0_caller.decimals().call().await?;
-        let token1_caller = ERC20Token::new(token1_address, rpc_client.clone());
+        let token1_caller = ERC20Token::new(token1_address, provider.clone());
         let token1_decimals = token1_caller.decimals().call().await?;
 
         let token0_symbol = token0_caller.symbol().call().await?;
         let token1_symbol = token1_caller.symbol().call().await?;
 
         Ok(Self {
+            provider,
             pair_caller,
             pair_address,
             token0_caller,
@@ -214,6 +228,16 @@ impl UniswapV2Tokens {
         Ok((price0, price1, block_timestamp))
     }
 
+    pub async fn subscribe_swap_events(&self) -> Result<impl StreamExt<Item = Log>> {
+        let swap_event_signature =
+            keccak256(b"Swap(address,uint256,uint256,uint256,uint256,address)");
+        let filter = Filter::new()
+            .event_signature(swap_event_signature)
+            .address(self.pair_address);
+        let sub = self.provider.subscribe_logs(&filter).await?;
+        Ok(sub.into_stream())
+    }
+
 }
 
 #[cfg(test)]
@@ -232,7 +256,7 @@ mod tests {
         let evm_block = EvmBlock::new(&app_config.eth.http_url).await.unwrap();
 
         let router_addr = address!("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D");
-        let uniswap_v2 = UniswapV2::new(evm_block.rpc_client.clone(), router_addr).await;
+        let uniswap_v2 = UniswapV2::new(evm_block.provider.clone(), router_addr).await;
         info!(
             "uniswap_v2 factory_caller: {:#?}",
             uniswap_v2.factory_caller
@@ -276,5 +300,23 @@ mod tests {
             "get_pair_liquidity pair_address:{} mint_logs: {:#?} burn_logs: {:#?} swap_logs: {:#?}",
             pair_address, mint_logs, burn_logs, swap_logs
         );
+    }
+
+    #[tokio::test]
+    async fn test_uniswap_v2_tokens() -> Result<()> {
+        let app_config = AppConfig::new().unwrap();
+        let log_level = app_config.init_log().unwrap();
+        info!("app_config: {:#?}", app_config);
+
+        let evm_block = EvmBlock::new(&app_config.eth.ws_url).await?;
+        let pair_address = address!("0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc");
+        let uniswap_v2_tokens = UniswapV2Tokens::new(pair_address, evm_block.provider.clone()).await.unwrap();
+        info!("uniswap_v2_tokens: {:#?}", uniswap_v2_tokens);
+
+        let mut stream = uniswap_v2_tokens.subscribe_swap_events().await?;
+        while let Some(log) = stream.next().await {
+            info!("Received log: {:#?}", log);
+        }
+        Ok(()) 
     }
 }
