@@ -305,7 +305,7 @@ mod tests {
 
         let tsdb = PairsTableTsdb::new(&app_config.tsdb.auth_token);
 
-        let mut stream = uniswap_v2_tokens.subscribe_swap_events().await?;
+        let mut stream = uniswap_v2_tokens.subscribe_swap_event().await?;
         while let Some(log) = stream.next().await {
             //info!("Received log: {:#?}", log);
             let swap_event = transform_swap_event(

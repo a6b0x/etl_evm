@@ -3,7 +3,9 @@ use alloy::providers::{DynProvider, Provider, ProviderBuilder};
 use alloy::rpc::types::{eth::Block, Filter, Log};
 use alloy::sol;
 use eyre::Result;
+use futures_util::future::ok;
 use futures_util::StreamExt;
+use std::collections::HashMap;
 
 sol!(
     #[allow(missing_docs)]
@@ -15,7 +17,7 @@ sol!(
 sol!(
     #[allow(missing_docs)]
     #[sol(rpc)]
-    #[derive(Debug)] 
+    #[derive(Debug)]
     UniswapV2Factory,
     "data/UniswapV2Factory.json"
 );
@@ -23,6 +25,7 @@ sol!(
 sol!(
     #[allow(missing_docs)]
     #[sol(rpc)]
+    #[derive(Debug)]
     UniswapV2Pair,
     "data/UniswapV2Pair.json"
 );
@@ -145,7 +148,13 @@ impl UniswapV2 {
 
         Ok(pair_address)
     }
-    pub async fn get_token_first_block(&self, token0_address: Address,token1_address: Address,from_block:u64,to_block: u64) -> Result<(u64, u64)> {
+    pub async fn get_token_first_block(
+        &self,
+        token0_address: Address,
+        token1_address: Address,
+        from_block: u64,
+        to_block: u64,
+    ) -> Result<(u64, u64)> {
         let filter = self
             .factory_caller
             .PairCreated_filter()
@@ -154,12 +163,13 @@ impl UniswapV2 {
             .from_block(from_block)
             .to_block(to_block);
 
-        let logs =filter.query().await?;
+        let logs = filter.query().await?;
         let (_, log) = logs
             .into_iter()
             .next()
             .ok_or_else(|| eyre::eyre!("PairCreated log not found"))?;
-        let block_number = log.block_number
+        let block_number = log
+            .block_number
             .ok_or_else(|| eyre::eyre!("Missing block number in log"))?;
         let block_timestamp = log
             .block_timestamp
@@ -167,16 +177,6 @@ impl UniswapV2 {
 
         Ok((block_number, block_timestamp))
     }
-
-    // pub async fn subscribe_swap_events(&self) -> Result<impl StreamExt<Item = Log>> {
-    //     let filter = Filter::new()
-    //         .event_signature(keccak256("Swap(address,uint256,uint256,uint256,uint256,address)"));
-        
-    //     self.rpc_client
-    //         .subscribe_logs(&filter)
-    //         .await
-    //         .map_err(|e| eyre::eyre!(e))
-    // }
 
 }
 
@@ -206,7 +206,7 @@ impl UniswapV2Tokens {
             token1_address,
             token1_decimals,
             token1_symbol,
-            block_number: None, 
+            block_number: None,
         })
     }
 
@@ -228,7 +228,7 @@ impl UniswapV2Tokens {
         Ok((price0, price1, block_timestamp))
     }
 
-    pub async fn subscribe_swap_events(&self) -> Result<impl StreamExt<Item = Log>> {
+    pub async fn subscribe_swap_event(&self) -> Result<impl StreamExt<Item = Log>> {
         let swap_event_signature =
             keccak256(b"Swap(address,uint256,uint256,uint256,uint256,address)");
         let filter = Filter::new()
@@ -238,6 +238,91 @@ impl UniswapV2Tokens {
         Ok(sub.into_stream())
     }
 
+    pub async fn get_swap_event(
+        &self,
+        from_block: u64,
+        to_block: u64,
+    ) -> Result<Vec<(UniswapV2Pair::Swap, Log)>> {
+        let filter = self
+            .pair_caller
+            .Swap_filter()
+            .address(self.pair_address)
+            .from_block(from_block)
+            .to_block(to_block);
+
+        filter
+            .query()
+            .await
+            .map_err(|e| eyre::eyre!("get_swap_event error: {}", e))
+    }
+
+    pub async fn get_burn_event(
+        &self,
+        from_block: u64,
+        to_block: u64,
+    ) -> Result<Vec<(UniswapV2Pair::Burn, Log)>> {
+        let filter = self
+            .pair_caller
+            .Burn_filter()
+            .address(self.pair_address)
+            .from_block(from_block)
+            .to_block(to_block);
+
+        filter
+            .query()
+            .await
+            .map_err(|e| eyre::eyre!("get_burn_event error: {}", e))
+    }
+
+    pub async fn get_mint_event(
+        &self,
+        from_block: u64,
+        to_block: u64,
+    ) -> Result<Vec<(UniswapV2Pair::Mint, Log)>> {
+        let filter = self
+            .pair_caller
+            .Mint_filter()
+            .address(self.pair_address)
+            .from_block(from_block)
+            .to_block(to_block);
+
+        filter
+            .query()
+            .await
+            .map_err(|e| eyre::eyre!("get_mint_event error: {}", e))
+    }
+
+    pub async fn get_all_event(&self, from_block: u64, to_block: u64) -> Result<HashMap<String, Vec<Log>>> {
+        let mint_event_signature = keccak256(b"Mint(address,uint256,uint256)");
+        let burn_event_signature = keccak256(b"Burn(address,uint256,uint256,address)");
+        let swap_event_signature =
+            keccak256(b"Swap(address,uint256,uint256,uint256,uint256,address)");
+        let filter = Filter::new()
+            .event_signature(vec![
+                mint_event_signature.into(),
+                burn_event_signature.into(),
+                swap_event_signature.into(),
+            ])
+            .address(self.pair_address)
+            .from_block(from_block)
+            .to_block(to_block);
+        let logs = self.provider.get_logs(&filter).await?;
+        let mut topic_log = HashMap::<String, Vec<Log>>::new();
+        for log in logs {
+            if log.topics().len() < 1 {
+                continue;  
+            }
+            let event_signature = log.topics()[0];
+            let event_name = match event_signature {
+                sig if sig == mint_event_signature => "Mint",
+                sig if sig == burn_event_signature => "Burn",
+                sig if sig == swap_event_signature => "Swap",
+                _ => continue,  
+            };
+            topic_log.entry(event_name.to_string()).or_default().push(log);
+        }
+        Ok(topic_log)
+    }
 }
 
 #[cfg(test)]
@@ -288,18 +373,6 @@ mod tests {
         );
         info!("get_pair_created: {:#?}", pair_created_events);
 
-        let pair_address = address!("0xaAF2fe003BB967EB7C35A391A2401e966bdB7F95");
-        let from_block1 = 22828657;
-        let to_block1 = 22828661;
-
-        let (mint_logs, burn_logs, swap_logs) = uniswap_v2
-            .get_pair_liquidity(pair_address, from_block1, to_block1)
-            .await
-            .unwrap();
-        info!(
-            "get_pair_liquidity pair_address:{} mint_logs: {:#?} burn_logs: {:#?} swap_logs: {:#?}",
-            pair_address, mint_logs, burn_logs, swap_logs
-        );
     }
 
     #[tokio::test]
@@ -310,13 +383,38 @@ mod tests {
 
         let evm_block = EvmBlock::new(&app_config.eth.ws_url).await?;
         let pair_address = address!("0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc");
-        let uniswap_v2_tokens = UniswapV2Tokens::new(pair_address, evm_block.provider.clone()).await.unwrap();
+        let uniswap_v2_tokens = UniswapV2Tokens::new(pair_address, evm_block.provider.clone())
+            .await
+            .unwrap();
         info!("uniswap_v2_tokens: {:#?}", uniswap_v2_tokens);
 
-        let mut stream = uniswap_v2_tokens.subscribe_swap_events().await?;
-        while let Some(log) = stream.next().await {
-            info!("Received log: {:#?}", log);
-        }
-        Ok(()) 
+        let from_block = 10008555;
+        let to_block = 10008566;
+
+        let swap_even_log = uniswap_v2_tokens
+            .get_swap_event(from_block, to_block)
+            .await?;
+        info!("get_swap_event: {:#?}", swap_even_log);
+
+        let burn_even_log = uniswap_v2_tokens
+            .get_burn_event(from_block, to_block)
+            .await?;
+        info!("get_burn_event: {:#?}", burn_even_log);
+
+        let mint_even_log = uniswap_v2_tokens
+            .get_mint_event(from_block, to_block)
+            .await?;
+        info!("get_mint_event: {:#?}", mint_even_log);
+
+        let all_event_log = uniswap_v2_tokens
+            .get_all_event(from_block, to_block)
+            .await?;
+        info!("get_all_event: {:#?}", all_event_log);
+
+        // let mut stream = uniswap_v2_tokens.subscribe_swap_event().await?;
+        // while let Some(log) = stream.next().await {
+        //     info!("Received log: {:#?}", log);
+        // }
+        Ok(())
     }
 }
