@@ -324,22 +324,19 @@ mod tests {
 
         let from_block1 = 22921717;
         let to_block1 = 22921721;
-        let (mint_logs, burn_logs, swap_logs) = uniswap_v2
-            .get_pair_liquidity(weth_usdc_pair, from_block1, to_block1)
-            .await
-            .unwrap();
+        let all_event = uniswap_v2_tokens.get_all_event(from_block1, to_block1).await.unwrap();
 
-        let mint_events = transform_mint_event(&mint_logs).unwrap();
-        info!("mint_events: {:#?}", mint_events);
-        let burn_events = transform_burn_event(&burn_logs).unwrap();
-        info!("burn_events: {:#?}", burn_events);
+        let mint_events = transform_mint_event(all_event.get("Mint").unwrap_or(&vec![])).unwrap();
+        let burn_events = transform_burn_event(all_event.get("Burn").unwrap_or(&vec![])).unwrap();
         let swap_events = transform_swap_event(
-            &swap_logs,
+            all_event.get("Swap").unwrap_or(&vec![]),
             uniswap_v2_tokens.token0_decimals,
             uniswap_v2_tokens.token1_decimals,
-        )
-        .unwrap();
-        info!("swap_events: {:#?}", swap_events);
+        ).unwrap();
+
+        info!("All mint events: {:#?}", mint_events);
+        info!("All burn events: {:#?}", burn_events);
+        info!("All swap events: {:#?}", swap_events);
     }
 
 }
