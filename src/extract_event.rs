@@ -2,6 +2,7 @@ use alloy::primitives::{address, keccak256, Address, Uint};
 use alloy::providers::{DynProvider, Provider, ProviderBuilder};
 use alloy::rpc::types::{eth::Block, Filter, Log};
 use alloy::sol;
+use alloy::sol_types::{SolConstructor, SolEvent};
 use eyre::Result;
 use futures_util::future::ok;
 use futures_util::StreamExt;
@@ -36,6 +37,41 @@ sol!(
     ERC20Token,
     "data/ERC20.json"
 );
+
+sol! {
+    #[sol(rpc)]
+    contract UniswapV2Pool {
+        function allPairsLength() external view returns (uint);
+    }
+}
+
+// sol! {
+//     #[sol(rpc)]
+//     interface IFactory {
+//     function allPairs(uint256 idx) external returns (address);
+//     function allPairsLength() external returns (uint256);
+//     }
+//     contract GetUniswapV2PairsBatchRequest {
+//     constructor(uint256 from, uint256 step, address factory) {
+//         uint256 allPairsLength = IFactory(factory).allPairsLength();
+
+//         step = from + step > allPairsLength ? allPairsLength - from : step;
+
+//         address[] memory allPairs = new address[](step);
+
+//         for (uint256 i = 0; i < step; ++i) {
+//             allPairs[i] = IFactory(factory).allPairs(from + i);
+//         }
+
+//         bytes memory _abiEncodedData = abi.encode(allPairs);
+
+//         assembly {
+//             let dataStart := add(_abiEncodedData, 0x20)
+//             return(dataStart, sub(msize(), dataStart))
+//         }
+//     }
+//     }
+// }
 
 pub struct UniswapV2 {
     pub provider: DynProvider,
@@ -178,6 +214,41 @@ impl UniswapV2 {
         Ok((block_number, block_timestamp))
     }
 
+    pub async fn get_all_pair_len(&self, token_address: Address) -> Result<u128> {
+        let token_caller = UniswapV2Pool::new(token_address, self.provider.clone());
+        let balance = token_caller.allPairsLength().call().await?;
+        Ok(balance
+            .try_into()
+            .map_err(|e| eyre::eyre!("Conversion error: {}", e))?)
+    }
+
+    // pub async fn get_batch_pairs(
+    //     &self,
+    //     from: u64,
+    //     step: u64,
+    //     factory_address: Address,
+    // ) -> Result<Vec<Address>> {
+    //     let constructor_args = GetUniswapV2PairsBatchRequest::constructorCall {
+    //         from: Uint::from(from),
+    //         step: Uint::from(step),
+    //         factory: factory_address,
+    //     };
+    //     let encoded_data = constructor_args.abi_encode();
+
+    //     let result = self.provider.call(
+    //         alloy::rpc::types::TransactionRequest { 
+    //             to: Some(factory_address.into()), 
+    //             input: encoded_data.into(), 
+    //             ..Default::default()
+    //         }
+    //     ).await?;
+    //     if result.is_empty() {
+    //         return Ok(vec![]);
+    //     }
+    //     let decoded: Vec<Address> = alloy::sol_types::SolValue::abi_decode(&result)?;
+
+    //     Ok(decoded)
+    // }
 }
 
 impl UniswapV2Tokens {
@@ -292,11 +363,18 @@ impl UniswapV2Tokens {
             .map_err(|e| eyre::eyre!("get_mint_event error: {}", e))
     }
 
-    pub async fn get_all_event(&self, from_block: u64, to_block: u64) -> Result<HashMap<String, Vec<Log>>> {
-        let mint_event_signature = keccak256(b"Mint(address,uint256,uint256)");
-        let burn_event_signature = keccak256(b"Burn(address,uint256,uint256,address)");
-        let swap_event_signature =
-            keccak256(b"Swap(address,uint256,uint256,uint256,uint256,address)");
+    pub async fn get_all_event(
+        &self,
+        from_block: u64,
+        to_block: u64,
+    ) -> Result<HashMap<String, Vec<Log>>> {
+        // let mint_event_signature = keccak256(b"Mint(address,uint256,uint256)");
+        // let burn_event_signature = keccak256(b"Burn(address,uint256,uint256,address)");
+        // let swap_event_signature =
+        //     keccak256(b"Swap(address,uint256,uint256,uint256,uint256,address)");
+        let mint_event_signature = UniswapV2Pair::Mint::SIGNATURE_HASH;
+        let burn_event_signature = UniswapV2Pair::Burn::SIGNATURE_HASH;
+        let swap_event_signature = UniswapV2Pair::Swap::SIGNATURE_HASH;
         let filter = Filter::new()
             .event_signature(vec![
                 mint_event_signature.into(),
@@ -306,20 +384,24 @@ impl UniswapV2Tokens {
             .address(self.pair_address)
             .from_block(from_block)
             .to_block(to_block);
+
         let logs = self.provider.get_logs(&filter).await?;
         let mut topic_log = HashMap::<String, Vec<Log>>::new();
         for log in logs {
             if log.topics().len() < 1 {
-                continue;  
+                continue;
             }
             let event_signature = log.topics()[0];
             let event_name = match event_signature {
                 sig if sig == mint_event_signature => "Mint",
                 sig if sig == burn_event_signature => "Burn",
                 sig if sig == swap_event_signature => "Swap",
-                _ => continue,  
+                _ => continue,
             };
-            topic_log.entry(event_name.to_string()).or_default().push(log);
+            topic_log
+                .entry(event_name.to_string())
+                .or_default()
+                .push(log);
         }
         Ok(topic_log)
     }
@@ -372,6 +454,20 @@ mod tests {
             pair_created_events.len()
         );
         info!("get_pair_created: {:#?}", pair_created_events);
+
+        let univ2_factory_addr = address!("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f");
+        // let pair_len = uniswap_v2
+        //     .get_all_pair_len(univ2_factory_addr)
+        //     .await
+        //     .unwrap();
+        // info!("get_all_pair_len: {:?}", pair_len);
+
+        // let batch_pair = uniswap_v2
+        //     .get_batch_pairs(10000835, 100, univ2_factory_addr)
+        //     .await
+        //     .unwrap();
+        // info!("get_batch_pairs: {:?}", batch_pair);
+
 
     }
 
