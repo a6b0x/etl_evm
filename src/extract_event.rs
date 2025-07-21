@@ -2,7 +2,7 @@ use alloy::primitives::{address, keccak256, Address, Uint};
 use alloy::providers::{DynProvider, Provider, ProviderBuilder};
 use alloy::rpc::types::{eth::Block, Filter, Log};
 use alloy::sol;
-use alloy::sol_types::{SolConstructor, SolEvent};
+use alloy::sol_types::{SolEvent, SolValue};
 use eyre::Result;
 use futures_util::future::ok;
 use futures_util::StreamExt;
@@ -45,33 +45,12 @@ sol! {
     }
 }
 
-// sol! {
-//     #[sol(rpc)]
-//     interface IFactory {
-//     function allPairs(uint256 idx) external returns (address);
-//     function allPairsLength() external returns (uint256);
-//     }
-//     contract GetUniswapV2PairsBatchRequest {
-//     constructor(uint256 from, uint256 step, address factory) {
-//         uint256 allPairsLength = IFactory(factory).allPairsLength();
-
-//         step = from + step > allPairsLength ? allPairsLength - from : step;
-
-//         address[] memory allPairs = new address[](step);
-
-//         for (uint256 i = 0; i < step; ++i) {
-//             allPairs[i] = IFactory(factory).allPairs(from + i);
-//         }
-
-//         bytes memory _abiEncodedData = abi.encode(allPairs);
-
-//         assembly {
-//             let dataStart := add(_abiEncodedData, 0x20)
-//             return(dataStart, sub(msize(), dataStart))
-//         }
-//     }
-//     }
-// }
+sol!(
+    #[allow(missing_docs)]
+    #[sol(rpc)]
+    UniswapV2PairList,
+    "data/UniswapV2PairList.json"
+);
 
 pub struct UniswapV2 {
     pub provider: DynProvider,
@@ -222,33 +201,21 @@ impl UniswapV2 {
             .map_err(|e| eyre::eyre!("Conversion error: {}", e))?)
     }
 
-    // pub async fn get_batch_pairs(
-    //     &self,
-    //     from: u64,
-    //     step: u64,
-    //     factory_address: Address,
-    // ) -> Result<Vec<Address>> {
-    //     let constructor_args = GetUniswapV2PairsBatchRequest::constructorCall {
-    //         from: Uint::from(from),
-    //         step: Uint::from(step),
-    //         factory: factory_address,
-    //     };
-    //     let encoded_data = constructor_args.abi_encode();
+    pub async fn get_pair_list(&self, from_index: u64, list_size: usize) -> Result<Vec<Address>> {
+        let deployer = UniswapV2PairList::deploy_builder(
+            self.provider.clone(),
+            Uint::from(from_index),
+            Uint::from(list_size as u64),
+            *self.factory_caller.address(),
+        );
+        let res = deployer
+            .call_raw()
+            .await
+            .map_err(|e| eyre::eyre!("Failed to call UniswapV2PairList: {}", e))?;
 
-    //     let result = self.provider.call(
-    //         alloy::rpc::types::TransactionRequest { 
-    //             to: Some(factory_address.into()), 
-    //             input: encoded_data.into(), 
-    //             ..Default::default()
-    //         }
-    //     ).await?;
-    //     if result.is_empty() {
-    //         return Ok(vec![]);
-    //     }
-    //     let decoded: Vec<Address> = alloy::sol_types::SolValue::abi_decode(&result)?;
-
-    //     Ok(decoded)
-    // }
+        let res_data = <Vec<Address> as SolValue>::abi_decode(&res)?;
+        Ok(res_data)
+    }
 }
 
 impl UniswapV2Tokens {
@@ -455,19 +422,8 @@ mod tests {
         );
         info!("get_pair_created: {:#?}", pair_created_events);
 
-        let univ2_factory_addr = address!("0x5C69bEe701ef814a2B6a3EDD4B1652CB9cc5aA6f");
-        // let pair_len = uniswap_v2
-        //     .get_all_pair_len(univ2_factory_addr)
-        //     .await
-        //     .unwrap();
-        // info!("get_all_pair_len: {:?}", pair_len);
-
-        // let batch_pair = uniswap_v2
-        //     .get_batch_pairs(10000835, 100, univ2_factory_addr)
-        //     .await
-        //     .unwrap();
-        // info!("get_batch_pairs: {:?}", batch_pair);
-
+        let pair_list = uniswap_v2.get_pair_list(400000, 10).await.unwrap();
+        info!("get_pair_list: {:?}", pair_list);
 
     }
 
