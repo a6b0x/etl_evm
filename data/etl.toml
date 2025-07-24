@@ -4,7 +4,9 @@ ws_url = "wss://reth-ethereum.ithaca.xyz/ws"
 chain_id = 1
 start_block = 10000000                           
 end_block = 10000005                            
-output_file = "transactions.csv"                
+output_file = "transactions.csv"    
+[uniswap_v2]
+router_address = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"
 [log]
 level = "debug" 
 [tsdb]

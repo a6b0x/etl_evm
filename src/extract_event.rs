@@ -48,8 +48,15 @@ sol! {
 sol!(
     #[allow(missing_docs)]
     #[sol(rpc)]
-    UniswapV2PairList,
-    "data/UniswapV2PairList.json"
+    UniV2FactoryPair,
+    "data/UniV2FactoryPair.json"
+);
+
+sol!(
+    #[allow(missing_docs)]
+    #[sol(rpc)]
+    UniV2FactoryPair1,
+    "data/UniV2FactoryPair1.json"
 );
 
 pub struct UniswapV2 {
@@ -99,10 +106,6 @@ impl UniswapV2 {
     }
 
     pub async fn get_pair_created(&self, from_block: u64, to_block: u64) -> Result<Vec<Log>> {
-        // let filter = self
-        //     .factory_caller
-        //     .PairCreated_filter()
-        //     .topic3(pair_address);
         let event_signature = keccak256(b"PairCreated(address,address,address,uint256)");
 
         let filter = Filter::new()
@@ -201,21 +204,38 @@ impl UniswapV2 {
             .map_err(|e| eyre::eyre!("Conversion error: {}", e))?)
     }
 
-    pub async fn get_pair_list(&self, from_index: u64, list_size: usize) -> Result<Vec<Address>> {
-        let deployer = UniswapV2PairList::deploy_builder(
+    pub async fn get_factory_pair_list(&self, from_index: u64, list_size: usize) -> Result<Vec<Address>> {
+        let deployer = UniV2FactoryPair::deploy_builder(
             self.provider.clone(),
             Uint::from(from_index),
-            Uint::from(list_size as u64),
+            Uint::from(list_size),
             *self.factory_caller.address(),
         );
         let res = deployer
             .call_raw()
             .await
-            .map_err(|e| eyre::eyre!("Failed to call UniswapV2PairList: {}", e))?;
+            .map_err(|e| eyre::eyre!("Failed to call UniV2FactoryPair: {}", e))?;
 
         let res_data = <Vec<Address> as SolValue>::abi_decode(&res)?;
         Ok(res_data)
     }
+
+    pub async fn get_factory_pair1_list(&self, from_index: u64, list_size: usize) -> Result<Vec<Address>> {
+        let deployer = UniV2FactoryPair1::deploy_builder(
+            self.provider.clone(),
+            Uint::from(from_index),
+            Uint::from(list_size),
+            *self.factory_caller.address(),
+        );
+        let res = deployer
+            .call_raw()
+            .await
+            .map_err(|e| eyre::eyre!("Failed to call UniV2FactoryPair1: {}", e))?;
+
+        let res_data = <Vec<Address> as SolValue>::abi_decode(&res)?;
+        Ok(res_data)
+    }
+
 }
 
 impl UniswapV2Tokens {
@@ -422,8 +442,10 @@ mod tests {
         );
         info!("get_pair_created: {:#?}", pair_created_events);
 
-        let pair_list = uniswap_v2.get_pair_list(400000, 10).await.unwrap();
-        info!("get_pair_list: {:?}", pair_list);
+        let factory_pair_list = uniswap_v2.get_factory_pair_list(400000, 5).await.unwrap();
+        info!("get_factory_pair_list: {:?}", factory_pair_list);
+        let factory_pair1_list = uniswap_v2.get_factory_pair1_list(400000, 5).await.unwrap();
+        info!("get_factory_pair1_list: {:?}", factory_pair1_list);
 
     }
 

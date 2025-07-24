@@ -8,6 +8,7 @@ pub struct AppConfig {
     pub eth: EthCfg,
     pub log: Option<LogCfg>,
     pub tsdb: TsdbCfg,
+    pub uniswap_v2: UniV2Cfg,
 }
 
 #[derive(Debug, Deserialize)]
@@ -30,6 +31,11 @@ pub struct TsdbCfg {
     pub query_url: String,
     pub write_url: String,
     pub auth_token: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct UniV2Cfg {
+    pub router_address: String,
 }
 
 impl AppConfig {
@@ -72,6 +78,6 @@ mod tests {
     fn test_app_config() {
         let app_config = AppConfig::new().unwrap();
         let log_level = app_config.init_log().unwrap();
-        info!("test_app_config log_level: {:?}", log_level);
+        info!("app_config : {:#?}", app_config);
     }
 }
