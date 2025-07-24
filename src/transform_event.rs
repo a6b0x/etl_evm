@@ -74,6 +74,73 @@ where
     let formatted = timestamp.format("%Y-%m-%d %H:%M:%S");
     serializer.collect_str(&formatted)
 }
+impl PairCreatedEvent {
+    pub fn to_influx_line(&self) -> String {
+        format!(
+                "create_event,transaction_hash={},event_type={},factory_address={},pair_adress={},token0={},token1={} block_number={} {}",
+                self.transaction_hash,
+                self.event_type,
+                self.factory_address,
+                self.pair_address,
+                self.token0_address,
+                self.token1_address,
+                self.block_number,
+                self.block_timestamp
+            )
+    }
+}
+
+impl MintEvent {
+    pub fn to_influx_line(&self) -> String {
+        format!(
+                "mint_event,transaction_hash={},event_type={},caller_address={},pair_address={} amount0={},amount1={},block_number={} {}",
+                self.transaction_hash,
+                self.event_type,
+                self.caller_address,
+                self.pair_address,
+                self.token0_amount,
+                self.token1_amount,
+                self.block_number,
+                self.block_timestamp
+            )
+    }
+}
+
+impl BurnEvent {
+    pub fn to_influx_line(&self) -> String {
+        format!(
+                "burn_event,transaction_hash={},event_type={},caller_address={},pair_address={} amount0={},amount1={},block_number={} {}",
+                self.transaction_hash,
+                self.event_type,
+                self.caller_address,
+                self.pair_address,
+                self.token0_amount,
+                self.token1_amount,
+                self.block_number,
+                self.block_timestamp
+            )
+    }
+}
+
+impl SwapEvent {
+    pub fn to_influx_line(&self) -> String {
+        format!("swap_event,pair_address={},caller_address={},receiver_address={},transaction_hash={} \
+                token0_amount={},token1_amount={},token0_amounts={},token1_amounts={},token0_token1={},token1_token0={},block_number={} {}",
+                self.pair_address,
+                self.caller_address,
+                self.receiver_address,
+                self.transaction_hash,
+                self.token0_amount,
+                self.token1_amount,
+                self.token0_amounts,
+                self.token1_amounts,
+                self.token0_token1,
+                self.token1_token0,
+                self.block_number,
+                self.block_timestamp
+            )
+    }
+}
 
 pub fn transform_pair_created_event(logs: &[Log]) -> Result<Vec<PairCreatedEvent>> {
     let mut events = Vec::new();
@@ -324,7 +391,10 @@ mod tests {
 
         let from_block1 = 22921717;
         let to_block1 = 22921721;
-        let all_event = uniswap_v2_tokens.get_all_event(from_block1, to_block1).await.unwrap();
+        let all_event = uniswap_v2_tokens
+            .get_all_event(from_block1, to_block1)
+            .await
+            .unwrap();
 
         let mint_events = transform_mint_event(all_event.get("Mint").unwrap_or(&vec![])).unwrap();
         let burn_events = transform_burn_event(all_event.get("Burn").unwrap_or(&vec![])).unwrap();
@@ -332,11 +402,11 @@ mod tests {
             all_event.get("Swap").unwrap_or(&vec![]),
             uniswap_v2_tokens.token0_decimals,
             uniswap_v2_tokens.token1_decimals,
-        ).unwrap();
+        )
+        .unwrap();
 
         info!("All mint events: {:#?}", mint_events);
         info!("All burn events: {:#?}", burn_events);
         info!("All swap events: {:#?}", swap_events);
     }
-
 }
