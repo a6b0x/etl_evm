@@ -13,19 +13,11 @@ docker run -it \
   --object-store file \
   --data-dir /var/lib/influxdb3
 ```
-## 测试驱动 增量开发
-- 搭建开发框架 250625
-- 解析配置文件并打印日志 250626
-- 重构初始化模块 250626
-- 获取以太最新区块号 250626
-- 抽象以太RPC连接器 250626
-- 获取最新区块的交易数据 250628
-- 存储最新区块数据为CSV格式 250629
-- 通过ABI方式读取UniswapV2交易对数量 250630
-- 封装以太RPC连接器 250701
-- 获取给定区块范围内UniswapV2的合约创建事件 250702
-- 获取代币对的流动性事件 250703
-- 封装UniswapV2执行器 250704
-- 转换UniswapV2事件日志 250705
-- 存储UniswapV2事件 250706
-- 拆分UniswapV2数据表结构 250707
+## 
+```bash
+cd etl_evm && ./target/debug/etl_evm univ2-event \
+--rpc-url "https://reth-ethereum.ithaca.xyz/rpc" \
+--router "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D" \
+--from-block 22828657 \
+--to-block 22828691
+```
