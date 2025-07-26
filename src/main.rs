@@ -97,28 +97,20 @@ async fn run_univ2_event_etl(config: &AppConfig) -> Result<()> {
     let router_address = Address::from_str(&config.uniswap_v2.router_address)?;
     let uniswap_v2 = UniswapV2::new(evm_block.provider.clone(), router_address).await;
 
-    let pair_created_event = uniswap_v2
+    let pair_created_logs = uniswap_v2
         .get_pair_created(config.eth.start_block, config.eth.end_block)
         .await?;
-    let pair_created_event1 = transform_pair_created_event(&pair_created_event)?;
-    info!("Found {} PairCreated events.", pair_created_event1.len());
+    let pair_created_events = transform_pair_created_event(&pair_created_logs)?;
+    info!("Found {} PairCreated events.", pair_created_events.len());
 
-    let mut output_dir = config.eth.output_file.clone();
-    if !output_dir.ends_with('/') {
-        output_dir.push('/');
-    }
+    let mut csv_file0 = PairsTableFile::new("data/univ2_create_event.csv")?;
+    csv_file0.write_pair_created_event(&pair_created_events)?;
 
-    let mut pair_created_event_csv_path = output_dir.clone();
-    pair_created_event_csv_path.push_str("univ2_create_event.csv");
-    let mut csv_file0 = PairsTableFile::new(&pair_created_event_csv_path)?;
-    csv_file0.write_pair_created_event(&pair_created_event1)?;
-    info!("Wrote PairCreated events to {}", pair_created_event_csv_path);
+    let mut all_mint_events: Vec<MintEvent> = Vec::new();
+    let mut all_burn_events: Vec<BurnEvent> = Vec::new();
+    let mut all_swap_events: Vec<SwapEvent> = Vec::new();
 
-    let mut mint_event_temp: Vec<MintEvent> = Vec::new();
-    let mut burn_event_temp: Vec<BurnEvent> = Vec::new();
-    let mut swap_event_temp: Vec<SwapEvent> = Vec::new();
-
-    for event in pair_created_event1 {
+    for event in pair_created_events {
         let pair_address = event.pair_address;
         let uniswap_v2_tokens =
             UniswapV2Tokens::new(pair_address, evm_block.provider.clone()).await?;
@@ -128,43 +120,32 @@ async fn run_univ2_event_etl(config: &AppConfig) -> Result<()> {
             .await?;
 
         if let Some(mint_event_log) = log3.get("Mint") {
-            let mint_event = transform_mint_event(mint_event_log)?;
-            mint_event_temp.extend(mint_event);
+            let mint_events = transform_mint_event(mint_event_log)?;
+            all_mint_events.extend(mint_events);
         }
         if let Some(burn_event_log) = log3.get("Burn") {
-            let burn_event = transform_burn_event(burn_event_log)?;
-            burn_event_temp.extend(burn_event);
+            let burn_events = transform_burn_event(burn_event_log)?;
+            all_burn_events.extend(burn_events);
         }
         if let Some(swap_event_log) = log3.get("Swap") {
-            let swap_event = transform_swap_event(
+            let swap_events = transform_swap_event(
                 swap_event_log,
                 uniswap_v2_tokens.token0_decimals,
                 uniswap_v2_tokens.token1_decimals,
             )?;
-            swap_event_temp.extend(swap_event);
+            all_swap_events.extend(swap_events);
         }
     }
-    info!("Found {} Mint events.", mint_event_temp.len());
-    info!("Found {} Burn events.", burn_event_temp.len());
-    info!("Found {} Swap events.", swap_event_temp.len());
 
-    let mut mint_event_csv_path = output_dir.clone();
-    mint_event_csv_path.push_str("univ2_mint_event.csv");
-    let mut csv_file1 = PairsTableFile::new(&mint_event_csv_path)?;
-    csv_file1.write_mint_event(&mint_event_temp)?;
-    info!("Wrote Mint events to {}", mint_event_csv_path);
+    let mut csv_file1 = PairsTableFile::new("data/univ2_mint_event.csv")?;
+    csv_file1.write_mint_event(&all_mint_events)?;
 
-    let mut burn_event_csv_path = output_dir.clone();
-    burn_event_csv_path.push_str("univ2_burn_event.csv");
-    let mut csv_file2 = PairsTableFile::new(&burn_event_csv_path)?;
-    csv_file2.write_burn_event(&burn_event_temp)?;
-    info!("Wrote Burn events to {}", burn_event_csv_path);
+    let mut csv_file2 = PairsTableFile::new("data/univ2_burn_event.csv")?;
+    csv_file2.write_burn_event(&all_burn_events)?;
 
-    let mut swap_event_csv_path = output_dir.clone();
-    swap_event_csv_path.push_str("univ2_swap_event.csv");
-    let mut csv_file3 = PairsTableFile::new(&swap_event_csv_path)?;
-    csv_file3.write_swap_event(&swap_event_temp)?;
-    info!("Wrote Swap events to {}", swap_event_csv_path);
+    let mut csv_file3 = PairsTableFile::new("data/univ2_swap_event.csv")?;
+    csv_file3.write_swap_event(&all_swap_events)?;
+
 
     Ok(())
 }

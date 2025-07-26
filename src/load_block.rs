@@ -26,7 +26,7 @@ impl BlockTableFile {
             .append(true)
             .open(filename)
             .context("Failed to open file")?;
-        let mut writer = Writer::from_writer(file);
+        let writer = Writer::from_writer(file);
         //writer.write_record(&["block_number","tx_count","miner","date_time"])
         //    .context("Failed to write record header")?;
         Ok(Self { csv: writer })
@@ -83,7 +83,7 @@ mod tests {
     use super::*;
     use crate::{extract_block::EvmBlock, init::AppConfig, transform_block::transform_block};
     use chrono::{DateTime, Local, Utc};
-    use eyre::{ContextCompat, Result};
+    
     use log::info;
 
     #[test]
