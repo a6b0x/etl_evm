@@ -1,8 +1,7 @@
 use alloy::primitives::Address;
-use alloy::rpc::types::eth::{Block, Log};
-use chrono::{DateTime, Local, Utc};
-use env_logger::fmt::Timestamp;
-use eyre::{ContextCompat, Result};
+use alloy::rpc::types::eth::Log;
+use chrono::{DateTime, Utc};
+use eyre::Result;
 
 #[derive(Debug, serde::Serialize)]
 pub struct PairCreatedEvent {

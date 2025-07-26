@@ -1,5 +1,5 @@
 use alloy::rpc::types::eth::Block;
-use eyre::{ContextCompat, Result};
+use eyre::Result;
 
 #[derive(Debug)]
 pub struct BlockTemp {

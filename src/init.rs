@@ -1,7 +1,8 @@
-use config::{builder, Config, File};
+use config::{Config, File};
 use eyre::{Context, Result};
 use log::LevelFilter;
 use serde::Deserialize;
+use std::env;
 
 #[derive(Debug, Deserialize)]
 pub struct AppConfig {

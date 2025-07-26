@@ -3,6 +3,7 @@ use alloy::rpc::types::eth::Block;
 use alloy::rpc::types::eth::Header;
 use eyre::Result;
 use futures_util::StreamExt;
+
 pub struct EvmBlock {
     pub provider: DynProvider,
 }
@@ -29,7 +30,7 @@ impl EvmBlock {
         Ok(sub.into_stream())
     }
 
-    pub async fn get_latest_block_number(&self) -> Result<(u64)> {
+    pub async fn get_latest_block_number(&self) -> Result<u64> {
         let latest_block_number = self.provider.get_block_number().await?;
         Ok(latest_block_number)
     }
@@ -49,7 +50,7 @@ impl EvmBlock {
 mod tests {
     use super::*;
     use crate::init::AppConfig;
-    use futures_util::future::ok;
+    
     use log::info;
 
     #[tokio::test]

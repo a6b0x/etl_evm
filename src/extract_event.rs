@@ -1,10 +1,9 @@
-use alloy::primitives::{address, keccak256, Address, Uint};
-use alloy::providers::{DynProvider, Provider, ProviderBuilder};
-use alloy::rpc::types::{eth::Block, Filter, Log};
+use alloy::primitives::{keccak256, Address, Uint};
+use alloy::providers::{DynProvider, Provider};
+use alloy::rpc::types::{Filter, Log};
 use alloy::sol;
 use alloy::sol_types::{SolEvent, SolValue};
 use eyre::Result;
-use futures_util::future::ok;
 use futures_util::StreamExt;
 use std::collections::HashMap;
 
@@ -64,6 +63,7 @@ pub struct UniswapV2 {
     pub router_caller: UniswapV2Router::UniswapV2RouterInstance<DynProvider>,
     pub factory_caller: UniswapV2Factory::UniswapV2FactoryInstance<DynProvider>,
 }
+
 #[derive(Debug)]
 pub struct UniswapV2Tokens {
     pub provider: DynProvider,
@@ -166,6 +166,7 @@ impl UniswapV2 {
 
         Ok(pair_address)
     }
+
     pub async fn get_token_first_block(
         &self,
         token0_address: Address,
@@ -400,6 +401,7 @@ mod tests {
     use crate::extract_block::EvmBlock;
     use crate::init::AppConfig;
     use log::info;
+    use std::str::FromStr;
 
     #[tokio::test]
     async fn test_uniswap_v2() {
@@ -409,7 +411,8 @@ mod tests {
 
         let evm_block = EvmBlock::new(&app_config.eth.http_url).await.unwrap();
 
-        let router_addr = address!("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D");
+        let router_addr =
+            Address::from_str("0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D").unwrap();
         let uniswap_v2 = UniswapV2::new(evm_block.provider.clone(), router_addr).await;
         info!(
             "uniswap_v2 factory_caller: {:#?}",
@@ -446,7 +449,6 @@ mod tests {
         info!("get_factory_pair_list: {:?}", factory_pair_list);
         let factory_pair1_list = uniswap_v2.get_factory_pair1_list(400000, 5).await.unwrap();
         info!("get_factory_pair1_list: {:?}", factory_pair1_list);
-
     }
 
     #[tokio::test]
@@ -456,7 +458,8 @@ mod tests {
         info!("app_config: {:#?}", app_config);
 
         let evm_block = EvmBlock::new(&app_config.eth.ws_url).await?;
-        let pair_address = address!("0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc");
+        let pair_address =
+            Address::from_str("0xB4e16d0168e52d35CaCD2c6185b44281Ec28C9Dc").unwrap();
         let uniswap_v2_tokens = UniswapV2Tokens::new(pair_address, evm_block.provider.clone())
             .await
             .unwrap();
