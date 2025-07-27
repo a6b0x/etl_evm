@@ -1,15 +1,15 @@
 [eth]
 http_url = "https://reth-ethereum.ithaca.xyz/rpc"
-ws_url = "wss://reth-ethereum.ithaca.xyz/ws"
-chain_id = 1
-start_block = 10000000                           
-end_block = 10000005                            
-output_file = "transactions.csv"    
+ws_url = "wss://reth-ethereum.ithaca.xyz/ws" 
 [uniswap_v2]
 router_address = "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D"
-[log]
-level = "debug" 
+from_block = 10000000
+to_block = 10000005
 [tsdb]
 query_url = "http://tsdb:8181/api/v3/query_sql"
 write_url = "http://tsdb:8181/api/v3/write_lp?db=evm_uniswap_v2"
 auth_token = "apiv3_di3lJBckgHFT2cJc5VLkKwsWsVEwI3XZsefjifwwLNR8kruGfhazhZ3tGBvIPZIquaFlbnqHJgTDdaLUFgIzrw"
+[log]
+level = "debug" 
+[csv]
+output_dir = "./data"
