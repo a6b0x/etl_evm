@@ -2,6 +2,7 @@ use alloy::primitives::Address;
 use clap::Parser;
 use eyre::Result;
 use log::info;
+use std::path::Path;
 use std::str::FromStr;
 
 mod extract_block;
@@ -23,8 +24,31 @@ use crate::{
     },
 };
 
+// #[derive(Parser, Debug)]
+// struct Univ2EventArgs {
+//     /// The HTTP RPC URL of the Ethereum node.
+//     #[arg(long, short = 'u')]
+//     rpc_url: Option<String>,
+
+//     /// The contract address of the Uniswap V2 Router.
+//     #[arg(long, short = 'r')]
+//     router: Option<Address>,
+
+//     /// The starting block number.
+//     #[arg(long, short = 'f')]
+//     from_block: Option<u64>,
+
+//     /// The ending block number.
+//     #[arg(long, short = 't')]
+//     to_block: Option<u64>,
+
+//     /// The directory to output CSV files.
+//     #[arg(long, short = 'o')]
+//     output_dir: Option<String>,
+// }
+
 #[derive(Parser, Debug)]
-#[command(name = "etl_evm", version = "0.1.0", author = "Gemini")]
+#[command(name = "etl_evm")]
 struct Cli {
     #[command(subcommand)]
     command: Commands,
@@ -32,79 +56,69 @@ struct Cli {
 
 #[derive(Parser, Debug)]
 enum Commands {
-    /// ETL for Uniswap V2 events
-    Univ2Event(Univ2EventArgs),
+    #[command(name = "getUniSwapV2Event")]
+    GetUniv2Event(Univ2EventArgs),
 }
 
 #[derive(Parser, Debug)]
 struct Univ2EventArgs {
-    /// The HTTP RPC URL of the Ethereum node.
-    #[arg(long, short = 'u')]
-    rpc_url: Option<String>,
-
-    /// The contract address of the Uniswap V2 Router.
-    #[arg(long, short = 'r')]
-    router: Option<Address>,
-
-    /// The starting block number.
-    #[arg(long, short = 'f')]
+    #[arg(long)]
+    http_url: Option<String>,
+    #[arg(long)]
     from_block: Option<u64>,
-
-    /// The ending block number.
-    #[arg(long, short = 't')]
+    #[arg(long)]
     to_block: Option<u64>,
-
-    /// The directory to output CSV files.
-    #[arg(long, short = 'o')]
+    #[arg(long)]
+    router_address: Option<String>,
+    #[arg(long)]
     output_dir: Option<String>,
 }
 
 #[tokio::main]
 async fn main() -> Result<()> {
     let cli = Cli::parse();
-    let mut app_config = AppConfig::new()?;
+    let app_config = AppConfig::new()?;
     let _log_level = app_config.init_log()?;
+    info!("Parsed CLI arguments: {:#?}", cli);
 
     match cli.command {
-        Commands::Univ2Event(args) => {
-            // Merge CLI arguments into AppConfig
-            if let Some(rpc_url) = args.rpc_url {
-                app_config.eth.http_url = rpc_url;
-            }
-            if let Some(router) = args.router {
-                app_config.uniswap_v2.router_address = router.to_string();
-            }
-            if let Some(from_block) = args.from_block {
-                app_config.eth.start_block = from_block;
-            }
-            if let Some(to_block) = args.to_block {
-                app_config.eth.end_block = to_block;
-            }
-            if let Some(output_dir) = args.output_dir {
-                app_config.eth.output_file = output_dir; // Assuming output_dir maps to a field in AppConfig
-            }
+        Commands::GetUniv2Event(args) => {
+            let args_is_full = args.http_url.is_some()
+                && args.router_address.is_some()
+                && args.from_block.is_some()
+                && args.to_block.is_some();
 
-            info!("Starting Uniswap V2 event ETL with config: {:#?}", app_config);
-            run_univ2_event_etl(&app_config).await?;
+            let app_config = if args_is_full {
+                info!("Using CLI arguments");
+                AppConfig::from_univ2_event_cli(&args)?
+            } else {
+                info!("args is not full, Using default config from data/etl.toml");
+                AppConfig::from_file("data/etl.toml")?
+            };
+            info!("app_config: {:#?}", app_config);
+            get_univ2_event(&app_config).await?;
         }
     }
 
     Ok(())
 }
 
-async fn run_univ2_event_etl(config: &AppConfig) -> Result<()> {
+async fn get_univ2_event(config: &AppConfig) -> Result<()> {
     let evm_block = EvmBlock::new(&config.eth.http_url).await?;
     let router_address = Address::from_str(&config.uniswap_v2.router_address)?;
     let uniswap_v2 = UniswapV2::new(evm_block.provider.clone(), router_address).await;
 
     let pair_created_logs = uniswap_v2
-        .get_pair_created(config.eth.start_block, config.eth.end_block)
+        .get_pair_created(config.uniswap_v2.from_block, config.uniswap_v2.to_block)
         .await?;
     let pair_created_events = transform_pair_created_event(&pair_created_logs)?;
-    info!("Found {} PairCreated events.", pair_created_events.len());
+    let output_dir = Path::new(&config.csv.output_dir);
+    let output_file = output_dir.join("univ2_create_event.csv");
 
-    let mut csv_file0 = PairsTableFile::new("data/univ2_create_event.csv")?;
+    let mut csv_file0 =
+        PairsTableFile::new(output_file.to_str().unwrap())?;
     csv_file0.write_pair_created_event(&pair_created_events)?;
+    info!("Wrote {} Pair Created events to {:?}.", pair_created_events.len(), output_file);
 
     let mut all_mint_events: Vec<MintEvent> = Vec::new();
     let mut all_burn_events: Vec<BurnEvent> = Vec::new();
@@ -116,7 +130,7 @@ async fn run_univ2_event_etl(config: &AppConfig) -> Result<()> {
             UniswapV2Tokens::new(pair_address, evm_block.provider.clone()).await?;
 
         let log3 = uniswap_v2_tokens
-            .get_all_event(config.eth.start_block, config.eth.end_block)
+            .get_all_event(config.uniswap_v2.from_block, config.uniswap_v2.to_block)
             .await?;
 
         if let Some(mint_event_log) = log3.get("Mint") {
@@ -137,15 +151,21 @@ async fn run_univ2_event_etl(config: &AppConfig) -> Result<()> {
         }
     }
 
-    let mut csv_file1 = PairsTableFile::new("data/univ2_mint_event.csv")?;
+    let file_mint = output_dir.join("univ2_mint_event.csv");
+    let mut csv_file1 =
+        PairsTableFile::new(file_mint.to_str().unwrap())?;
     csv_file1.write_mint_event(&all_mint_events)?;
-
-    let mut csv_file2 = PairsTableFile::new("data/univ2_burn_event.csv")?;
+    info!("Wrote {} Mint events to {:?}.", all_mint_events.len(), file_mint);
+    let file_burn = output_dir.join("univ2_burn_event.csv");
+    let mut csv_file2 =
+        PairsTableFile::new(file_burn.to_str().unwrap())?;
     csv_file2.write_burn_event(&all_burn_events)?;
-
-    let mut csv_file3 = PairsTableFile::new("data/univ2_swap_event.csv")?;
+    info!("Wrote {} Burn events to {:?}.", all_burn_events.len(), file_burn);
+    let file_swap = output_dir.join("univ2_swap_event.csv");
+    let mut csv_file3 =
+        PairsTableFile::new(file_swap.to_str().unwrap())?;
     csv_file3.write_swap_event(&all_swap_events)?;
-
+    info!("Wrote {} Swap events to {:?}.", all_swap_events.len(), file_swap);
 
     Ok(())
 }
