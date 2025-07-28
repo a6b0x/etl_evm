@@ -6,6 +6,7 @@ use alloy::sol_types::{SolEvent, SolValue};
 use eyre::Result;
 use futures_util::StreamExt;
 use std::collections::HashMap;
+use futures::future::TryFutureExt;
 
 sol!(
     #[allow(missing_docs)]
@@ -77,6 +78,28 @@ pub struct UniswapV2Tokens {
     pub token1_address: Address,
     pub token1_decimals: u8,
     pub token1_symbol: String,
+    pub block_number: Option<u64>,
+}
+
+#[derive(Debug)]
+pub struct UniswapV2MultiPair {
+    pub pair_addresses: Vec<Address>,
+    pub pairs: HashMap<Address, UniswapV2TokenPair>,
+    pub provider: DynProvider,
+}
+
+#[derive(Debug)]
+pub struct UniswapV2TokenPair {
+    pub pair_address: Address,
+    pub token0: TokenInfo,  
+    pub token1: TokenInfo,
+}
+
+#[derive(Debug)]
+pub struct TokenInfo {
+    pub address: Address,
+    pub decimals: u8,
+    pub symbol: String,
     pub block_number: Option<u64>,
 }
 
@@ -395,6 +418,57 @@ impl UniswapV2Tokens {
     }
 }
 
+impl UniswapV2MultiPair {
+    pub async fn new(provider: DynProvider, pair_addresses: Vec<Address>) -> Result<Self> {
+        let mut pairs = HashMap::new();
+        let addresses = pair_addresses.clone();
+        let init_tasks = addresses.into_iter().map(|addr| {
+            let provider = provider.clone();
+            async move {
+                let tokens = UniswapV2Tokens::new(addr, provider).await?;
+                Ok::<_, eyre::Report>((addr, tokens)) 
+            }
+        });
+        
+        let results = futures::future::try_join_all(init_tasks).await?;
+
+        for (pair_addr, tokens) in results {
+            let pair_token = UniswapV2TokenPair {
+                pair_address: pair_addr,
+                token0: TokenInfo {
+                    address: tokens.token0_address,
+                    decimals: tokens.token0_decimals,
+                    symbol: tokens.token0_symbol,
+                    block_number: None,
+                },
+                token1: TokenInfo {
+                    address: tokens.token1_address,
+                    decimals: tokens.token1_decimals,
+                    symbol: tokens.token1_symbol,
+                    block_number: None,
+                },
+            };
+            pairs.insert(pair_addr, pair_token);
+        }
+
+        Ok(Self { pair_addresses, provider, pairs })
+    }
+
+    pub async fn subscribe_all_events(&self) -> Result<impl StreamExt<Item = Log>> {
+        let mint_sig = UniswapV2Pair::Mint::SIGNATURE_HASH;
+        let burn_sig = UniswapV2Pair::Burn::SIGNATURE_HASH;
+        let swap_sig = UniswapV2Pair::Swap::SIGNATURE_HASH;
+
+        let filter = Filter::new()
+            .event_signature(vec![mint_sig.into(), burn_sig.into(), swap_sig.into()])
+            .address(self.pair_addresses.clone());
+
+        let sub = self.provider.subscribe_logs(&filter).await?;
+        Ok(sub.into_stream())
+    }
+
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -494,4 +568,25 @@ mod tests {
         // }
         Ok(())
     }
+
+    #[tokio::test] 
+    async fn test_uniswap_v2_multi_pair() -> Result<()> {
+        let app_config = AppConfig::new().unwrap();
+        let log_level = app_config.init_log().unwrap();
+        info!("app_config: {:#?}", app_config);
+
+        let evm_block = EvmBlock::new(&app_config.eth.http_url).await?;
+        let pair_addresses = app_config.uniswap_v2.pair_address
+        .as_ref()
+        .ok_or_else(|| eyre::eyre!("Missing pair addresses in config"))?
+        .iter()
+        .map(|s| Address::from_str(s))
+        .collect::<Result<Vec<_>, _>>()?;
+        let uniswap_v2_multi_pair =
+            UniswapV2MultiPair::new(evm_block.provider.clone(), pair_addresses).await?;
+        info!("uniswap_v2_multi_pair: {:#?}", uniswap_v2_multi_pair);
+        Ok(())
+    }
+
 }
+

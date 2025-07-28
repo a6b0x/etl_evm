@@ -212,7 +212,7 @@ mod tests {
     #[tokio::test]
     async fn test_load_swap_event() -> Result<()> {
         let app_config = AppConfig::new().unwrap();
-        let _log_level = app_config.init_log().unwrap();
+        let _ = app_config.init_log().unwrap();
         info!("app_config: {:#?}", app_config);
 
         let evm_block = EvmBlock::new(&app_config.eth.ws_url).await.unwrap();
