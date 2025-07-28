@@ -36,6 +36,7 @@ pub struct UniV2Cfg {
     pub router_address: String,
     pub from_block: u64,
     pub to_block: u64,
+    pub pair_address: Option<Vec<String>>,
 }
 
 #[derive(Debug, Deserialize)]
@@ -90,6 +91,7 @@ impl AppConfig {
                 router_address: args.router_address.clone().unwrap_or_default(),
                 from_block: args.from_block.unwrap_or(0),
                 to_block: args.to_block.unwrap_or(0),
+                pair_address: None,
             },
             csv: CsvCfg {
                 output_dir:args.output_dir.clone().unwrap_or_else(|| "./".into()),
@@ -112,7 +114,7 @@ mod tests {
     #[test]
     fn test_app_config() {
         let app_config = AppConfig::new().unwrap();
-        let log_level = app_config.init_log().unwrap();
+        _ = app_config.init_log();
         info!("app_config : {:#?}", app_config);
 
         let app_cfg_from_file = AppConfig::from_file("data/etl.toml").unwrap();

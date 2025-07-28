@@ -1,9 +1,10 @@
 use alloy::primitives::Address;
 use clap::Parser;
 use eyre::Result;
-use log::info;
+use log::{debug, info};
 use std::path::Path;
 use std::str::FromStr;
+use futures::{StreamExt, TryStreamExt};
 
 mod extract_block;
 mod extract_event;
@@ -15,37 +16,14 @@ mod transform_event;
 
 use crate::{
     extract_block::EvmBlock,
-    extract_event::{UniswapV2, UniswapV2Tokens},
+    extract_event::{UniswapV2, UniswapV2Tokens, UniswapV2MultiPair},
     init::AppConfig,
-    load_event::PairsTableFile,
+    load_event::{PairsTableFile, PairsTableTsdb},
     transform_event::{
         transform_burn_event, transform_mint_event, transform_pair_created_event,
         transform_swap_event, BurnEvent, MintEvent, SwapEvent,
     },
 };
-
-// #[derive(Parser, Debug)]
-// struct Univ2EventArgs {
-//     /// The HTTP RPC URL of the Ethereum node.
-//     #[arg(long, short = 'u')]
-//     rpc_url: Option<String>,
-
-//     /// The contract address of the Uniswap V2 Router.
-//     #[arg(long, short = 'r')]
-//     router: Option<Address>,
-
-//     /// The starting block number.
-//     #[arg(long, short = 'f')]
-//     from_block: Option<u64>,
-
-//     /// The ending block number.
-//     #[arg(long, short = 't')]
-//     to_block: Option<u64>,
-
-//     /// The directory to output CSV files.
-//     #[arg(long, short = 'o')]
-//     output_dir: Option<String>,
-// }
 
 #[derive(Parser, Debug)]
 #[command(name = "etl_evm")]
@@ -58,6 +36,8 @@ struct Cli {
 enum Commands {
     #[command(name = "getUniSwapV2Event")]
     GetUniv2Event(Univ2EventArgs),
+    #[command(name = "subscribe_uniswapv2_event")]
+    SubscribeUniv2Event,
 }
 
 #[derive(Parser, Debug)]
@@ -78,8 +58,8 @@ struct Univ2EventArgs {
 async fn main() -> Result<()> {
     let cli = Cli::parse();
     let app_config = AppConfig::new()?;
-    let _log_level = app_config.init_log()?;
-    info!("Parsed CLI arguments: {:#?}", cli);
+    let _ = app_config.init_log()?;
+    debug!("Parsed CLI arguments: {:#?}", cli);
 
     match cli.command {
         Commands::GetUniv2Event(args) => {
@@ -97,6 +77,11 @@ async fn main() -> Result<()> {
             };
             info!("app_config: {:#?}", app_config);
             get_univ2_event(&app_config).await?;
+        }
+        Commands::SubscribeUniv2Event => {
+            let app_config = AppConfig::from_file("data/etl.toml")?;
+            info!("app_config: {:#?}", app_config);
+            subscribe_univ2_event(&app_config).await?;
         }
     }
 
@@ -167,5 +152,29 @@ async fn get_univ2_event(config: &AppConfig) -> Result<()> {
     csv_file3.write_swap_event(&all_swap_events)?;
     info!("Wrote {} Swap events to {:?}.", all_swap_events.len(), file_swap);
 
+    Ok(())
+}
+
+
+async fn subscribe_univ2_event(config: &AppConfig) -> Result<()> {
+    let provider = EvmBlock::new(&config.eth.ws_url).await?.provider;
+    let pair_addresses = config.uniswap_v2.pair_address
+        .as_ref()
+        .ok_or_else(|| eyre::eyre!("Missing pair addresses in config"))?
+        .iter()
+        .map(|s| Address::from_str(s))
+        .collect::<Result<Vec<_>, _>>()?;
+
+    let multi_pair = UniswapV2MultiPair::new(
+        provider,
+        pair_addresses
+    ).await?;
+
+    let mut stream = multi_pair.subscribe_all_events().await?;
+
+    while let Some(log) = stream.next().await {
+        debug!("Received log: {:#?}", log);
+
+    }
     Ok(())
 }
