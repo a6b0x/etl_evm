@@ -66,9 +66,9 @@ impl PairsTableFile {
             .append(true)
             .open(filename)
             .context("Failed to open file")?;
+
         let mut writer = Writer::from_writer(file);
-        //writer.write_record(&["block_number","tx_count","miner","date_time"])
-        //    .context("Failed to write record header")?;
+
         Ok(Self { csv_writer: writer })
     }
 
@@ -78,6 +78,7 @@ impl PairsTableFile {
                 .serialize(event)
                 .context("Failed to write event data")?;
         }
+        self.csv_writer.flush();
         Ok(())
     }
     pub fn write_mint_event(&mut self, events: &[MintEvent]) -> Result<()> {
@@ -86,6 +87,7 @@ impl PairsTableFile {
                 .serialize(event)
                 .context("Failed to write event data")?;
         }
+        self.csv_writer.flush();
         Ok(())
     }
     pub fn write_burn_event(&mut self, events: &[BurnEvent]) -> Result<()> {
@@ -94,6 +96,7 @@ impl PairsTableFile {
                 .serialize(event)
                 .context("Failed to write event data")?;
         }
+        self.csv_writer.flush();
         Ok(())
     }
     pub fn write_swap_event(&mut self, events: &[SwapEvent]) -> Result<()> {
@@ -101,9 +104,11 @@ impl PairsTableFile {
             self.csv_writer
                 .serialize(event)
                 .context("Failed to write event data")?;
+        self.csv_writer.flush();
         }
         Ok(())
     }
+
 }
 
 #[cfg(test)]
