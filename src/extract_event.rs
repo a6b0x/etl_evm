@@ -1,4 +1,4 @@
-use alloy::primitives::{keccak256, Address, Uint};
+use alloy::primitives::{keccak256, Address, B256, Uint};
 use alloy::providers::{DynProvider, Provider};
 use alloy::rpc::types::{Filter, Log};
 use alloy::sol;
@@ -6,7 +6,6 @@ use alloy::sol_types::{SolEvent, SolValue};
 use eyre::Result;
 use futures_util::StreamExt;
 use std::collections::HashMap;
-use futures::future::TryFutureExt;
 
 sol!(
     #[allow(missing_docs)]
@@ -94,6 +93,13 @@ pub struct UniswapV2TokenPair {
     pub token0: TokenInfo,  
     pub token1: TokenInfo,
 }
+
+// Public constants for event signatures.
+// This is a better approach than making the entire generated module public.
+// It exposes only what's needed by other modules and hides implementation details.
+pub const MINT_EVENT_SIGNATURE: B256 = UniswapV2Pair::Mint::SIGNATURE_HASH;
+pub const BURN_EVENT_SIGNATURE: B256 = UniswapV2Pair::Burn::SIGNATURE_HASH;
+pub const SWAP_EVENT_SIGNATURE: B256 = UniswapV2Pair::Swap::SIGNATURE_HASH;
 
 #[derive(Debug)]
 pub struct TokenInfo {
@@ -379,13 +385,10 @@ impl UniswapV2Tokens {
         from_block: u64,
         to_block: u64,
     ) -> Result<HashMap<String, Vec<Log>>> {
-        // let mint_event_signature = keccak256(b"Mint(address,uint256,uint256)");
-        // let burn_event_signature = keccak256(b"Burn(address,uint256,uint256,address)");
-        // let swap_event_signature =
-        //     keccak256(b"Swap(address,uint256,uint256,uint256,uint256,address)");
-        let mint_event_signature = UniswapV2Pair::Mint::SIGNATURE_HASH;
-        let burn_event_signature = UniswapV2Pair::Burn::SIGNATURE_HASH;
-        let swap_event_signature = UniswapV2Pair::Swap::SIGNATURE_HASH;
+        // Use the public constants for consistency within the module as well.
+        let mint_event_signature = MINT_EVENT_SIGNATURE;
+        let burn_event_signature = BURN_EVENT_SIGNATURE;
+        let swap_event_signature = SWAP_EVENT_SIGNATURE;
         let filter = Filter::new()
             .event_signature(vec![
                 mint_event_signature.into(),
@@ -455,9 +458,9 @@ impl UniswapV2MultiPair {
     }
 
     pub async fn subscribe_all_events(&self) -> Result<impl StreamExt<Item = Log>> {
-        let mint_sig = UniswapV2Pair::Mint::SIGNATURE_HASH;
-        let burn_sig = UniswapV2Pair::Burn::SIGNATURE_HASH;
-        let swap_sig = UniswapV2Pair::Swap::SIGNATURE_HASH;
+        let mint_sig = MINT_EVENT_SIGNATURE;
+        let burn_sig = BURN_EVENT_SIGNATURE;
+        let swap_sig = SWAP_EVENT_SIGNATURE;
 
         let filter = Filter::new()
             .event_signature(vec![mint_sig.into(), burn_sig.into(), swap_sig.into()])
@@ -589,4 +592,3 @@ mod tests {
     }
 
 }
-

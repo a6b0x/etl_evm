@@ -104,6 +104,30 @@ impl AppConfig {
             },
         })
     }
+
+    pub fn from_subscribe_cli(args: &crate::SubscribeUniv2EventArgs) -> Result<Self> {
+        Ok(Self {
+            eth: EthCfg {
+                ws_url: args.ws_url.clone().unwrap(),
+                http_url: String::new(),
+            },
+            uniswap_v2: UniV2Cfg {
+                pair_address: Some(args.pair_address.clone()),
+                router_address: String::new(),
+                from_block: 0,
+                to_block: 0,
+            },
+            csv: CsvCfg {
+                output_dir: args.output_dir.clone().unwrap_or_else(|| "./data".to_string()),
+            },
+            log: None, 
+            tsdb: TsdbCfg { 
+                query_url: String::new(),
+                write_url: String::new(),
+                auth_token: String::new(),
+            },
+        })
+    }
 }
 
 #[cfg(test)]

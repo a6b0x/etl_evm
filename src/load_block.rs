@@ -26,6 +26,7 @@ impl BlockTableFile {
             .append(true)
             .open(filename)
             .context("Failed to open file")?;
+
         let writer = Writer::from_writer(file);
         //writer.write_record(&["block_number","tx_count","miner","date_time"])
         //    .context("Failed to write record header")?;

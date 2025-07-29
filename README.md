@@ -13,11 +13,17 @@ docker run -it \
   --object-store file \
   --data-dir /var/lib/influxdb3
 ```
-## 
-```bash
-cd etl_evm && ./target/debug/etl_evm univ2-event \
---rpc-url "https://reth-ethereum.ithaca.xyz/rpc" \
---router "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D" \
+## 从历史数据到CSV
+cargo run -- getUniSwapV2Event \
+--http-url "https://reth-ethereum.ithaca.xyz/rpc" \
+--router-address "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D" \
 --from-block 22828657 \
 --to-block 22828691
 ```
+
+## 从实时数据到CSV
+```
+cargo run -- subscribe_uniswapv2_event
+```
+
+提示`tls handshake eof`就等会再试
