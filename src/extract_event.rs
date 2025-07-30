@@ -94,9 +94,6 @@ pub struct UniswapV2TokenPair {
     pub token1: TokenInfo,
 }
 
-// Public constants for event signatures.
-// This is a better approach than making the entire generated module public.
-// It exposes only what's needed by other modules and hides implementation details.
 pub const MINT_EVENT_SIGNATURE: B256 = UniswapV2Pair::Mint::SIGNATURE_HASH;
 pub const BURN_EVENT_SIGNATURE: B256 = UniswapV2Pair::Burn::SIGNATURE_HASH;
 pub const SWAP_EVENT_SIGNATURE: B256 = UniswapV2Pair::Swap::SIGNATURE_HASH;

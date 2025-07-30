@@ -44,7 +44,6 @@ pub struct CsvCfg {
     pub output_dir: String,
 }
 
-
 impl AppConfig {
     pub fn new() -> Result<Self> {
         let config_path = "data/etl.toml";
@@ -78,14 +77,16 @@ impl AppConfig {
         let config = Config::builder()
             .add_source(File::with_name(file_path))
             .build()?;
-        config.try_deserialize().context("Failed to read config file")
+        config
+            .try_deserialize()
+            .context("Failed to read config file")
     }
 
-    pub fn from_univ2_event_cli(args: &crate::Univ2EventArgs) -> Result<Self> {
+    pub fn from_get_cli(args: &crate::Univ2EventArgs) -> Result<Self> {
         Ok(Self {
             eth: EthCfg {
                 http_url: args.http_url.clone().unwrap_or_default(),
-                ws_url: "".to_string(), 
+                ws_url: "".to_string(),
             },
             uniswap_v2: UniV2Cfg {
                 router_address: args.router_address.clone().unwrap_or_default(),
@@ -94,7 +95,7 @@ impl AppConfig {
                 pair_address: None,
             },
             csv: CsvCfg {
-                output_dir:args.output_dir.clone().unwrap_or_else(|| "./".into()),
+                output_dir: args.output_dir.clone().unwrap_or_else(|| "./".into()),
             },
             log: None,
             tsdb: TsdbCfg {
@@ -118,16 +119,40 @@ impl AppConfig {
                 to_block: 0,
             },
             csv: CsvCfg {
-                output_dir: args.output_dir.clone().unwrap_or_else(|| "./data".to_string()),
+                output_dir: args.output_dir.clone().unwrap_or_else(|| "./".to_string()),
             },
-            log: None, 
-            tsdb: TsdbCfg { 
+            log: None,
+            tsdb: TsdbCfg {
                 query_url: String::new(),
                 write_url: String::new(),
                 auth_token: String::new(),
             },
         })
     }
+    pub fn from_subscribe_db_cli(args: &crate::SubscribeUniv2EventDbArgs) -> Result<Self> {
+        Ok(Self {
+            eth: EthCfg {
+                ws_url: args.ws_url.clone().unwrap(),
+                http_url: String::new(),
+            },
+            uniswap_v2: UniV2Cfg {
+                pair_address: Some(args.pair_address.clone()),
+                router_address: String::new(),
+                from_block: 0,
+                to_block: 0,
+            },
+            csv: CsvCfg {
+                output_dir: String::new(),
+            },
+            log: None,
+            tsdb: TsdbCfg {
+                query_url: String::new(),
+                write_url: args.write_url.clone().unwrap(),
+                auth_token: args.auth_token.clone().unwrap(),
+            },
+        })
+    }
+
 }
 
 #[cfg(test)]
