@@ -70,3 +70,16 @@ docker run -it \
   --object-store file \
   --data-dir /var/lib/influxdb3
 ```
+
+# 数据对接
+## fluvio（可选）
+
+```bash
+fluvio cluster start --sc-pub-addr 0.0.0.0:9003
+# 列出所有主题
+fluvio topic list
+# 创建主题
+fluvio topic create quickstart-topic
+# 发布主题
+fluvio produce quickstart-topic
+```

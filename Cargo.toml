@@ -17,3 +17,4 @@ reqwest = "0.12.22"
 futures = "0.3.31"
 futures-util = "0.3.31"
 clap = { version = "4.5.4", features = ["derive"] }
+fluvio = "0.24.4"
