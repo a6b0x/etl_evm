@@ -25,7 +25,7 @@ mod tests {
 
     #[tokio::test]
     async fn test_mq() -> Result<()> {
-        let mq = Mq::new("89.117.20.24:9003")
+        let mq = Mq::new("localhost:9003")
             .await
             .expect("Failed to connect to Fluvio. Is it running locally?");
 
