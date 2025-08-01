@@ -75,11 +75,17 @@ docker run -it \
 ## fluvio（可选）
 
 ```bash
-fluvio cluster start --sc-pub-addr 0.0.0.0:9003
+fluvio cluster start \
+--sc-pub-addr 0.0.0.0:9003 
+
 # 列出所有主题
 fluvio topic list
 # 创建主题
-fluvio topic create quickstart-topic
+fluvio topic create test-topic
 # 发布主题
-fluvio produce quickstart-topic
+fluvio produce test-topic
+# 消费主题
+fluvio consume test-topic
+# 集群执行单元信息
+fluvio cluster spu list
 ```
