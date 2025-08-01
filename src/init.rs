@@ -11,6 +11,7 @@ pub struct AppConfig {
     pub tsdb: TsdbCfg,
     pub uniswap_v2: UniV2Cfg,
     pub csv: CsvCfg,
+    pub mq: MqCfg,
 }
 
 #[derive(Debug, Deserialize)]
@@ -42,6 +43,11 @@ pub struct UniV2Cfg {
 #[derive(Debug, Deserialize)]
 pub struct CsvCfg {
     pub output_dir: String,
+}
+
+#[derive(Debug, Deserialize)]
+pub struct MqCfg {
+    pub broker_url: String,
 }
 
 impl AppConfig {
@@ -103,6 +109,9 @@ impl AppConfig {
                 write_url: String::new(),
                 auth_token: String::new(),
             },
+            mq: MqCfg {
+                broker_url: String::new(),
+            },
         })
     }
 
@@ -127,6 +136,9 @@ impl AppConfig {
                 write_url: String::new(),
                 auth_token: String::new(),
             },
+            mq: MqCfg {
+                broker_url: String::new(),
+            },
         })
     }
     pub fn from_subscribe_db_cli(args: &crate::SubscribeUniv2EventDbArgs) -> Result<Self> {
@@ -150,9 +162,11 @@ impl AppConfig {
                 write_url: args.write_url.clone().unwrap(),
                 auth_token: args.auth_token.clone().unwrap(),
             },
+            mq: MqCfg {
+                broker_url: String::new(),
+            },
         })
     }
-
 }
 
 #[cfg(test)]
