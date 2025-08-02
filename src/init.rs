@@ -1,4 +1,3 @@
-use alloy::primitives::Address;
 use config::{Config, File};
 use eyre::{Context, Result};
 use log::LevelFilter;
@@ -164,6 +163,33 @@ impl AppConfig {
             },
             mq: MqCfg {
                 broker_url: String::new(),
+            },
+        })
+    }
+
+    pub fn from_subscribe_mq_cli(args: &crate::SubscribeUniv2EventMqArgs) -> Result<Self> {
+        Ok(Self {
+            eth: EthCfg {
+                ws_url: args.ws_url.clone().unwrap(),
+                http_url: String::new(),
+            },
+            uniswap_v2: UniV2Cfg {
+                router_address: args.router_address.clone().unwrap(),
+                pair_address: None,
+                from_block: 0,
+                to_block: 0,
+            },
+            csv: CsvCfg {
+                output_dir: String::new(),
+            },
+            log: None,
+            tsdb: TsdbCfg {
+                query_url: String::new(),
+                write_url: String::new(),
+                auth_token: String::new(),
+            },
+            mq: MqCfg {
+                broker_url: args.broker_url.clone().unwrap(),
             },
         })
     }
