@@ -1,7 +1,7 @@
 # ETL EVM
 用于以太坊生态链上数据提取、转换和加载（ETL）。
 
-# 从历史数据到CSV
+# Uniswap日志数据-->CSV
 
 ```bash
 # 不带参数，默认从配置文件读取，`./data/etl.toml`。
@@ -23,7 +23,7 @@ cargo run -- get_uniswapv2_event_csv \
 --output-dir "./data"
 
 ```
-# 从实时数据到CSV
+# Uniswap代币事件-->CSV
 
 ```bash
 # 不带参数，默认从配置文件读取，`./data/etl.toml`。
@@ -45,7 +45,7 @@ cargo run -- subscribe_uniswapv2_event_csv \
 
 提示`tls handshake eof`就等会再试
 
-# 从实时数据到Tsdb
+# Uniswap代币事件-->Tsdb
 ```bash
 cargo run -- subscribe_uniswapv2_event_db 
 
@@ -57,6 +57,14 @@ cargo run -- subscribe_uniswapv2_event_db \
     --auth-token "apiv3_di3lJBckgHFT2cJc5VLkKwsWsVEwI3XZsefjifwwLNR8kruGfhazhZ3tGBvIPZIquaFlbnqHJgTDdaLUFgIzrw"
 ```
 
+# 最新UniSwap工厂创建事件-->MQ
+
+```bash
+cargo run -- subscribe_uniswapv2_create_mq \
+    --ws-url "wss://reth-ethereum.ithaca.xyz/ws" \ 
+    --router-address "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D" \
+    --mq-url "127.0.0.1:9003"
+```
 
 # 数据存储
 ## Infuxdb（可选）
@@ -80,12 +88,13 @@ fluvio cluster start \
 
 # 列出所有主题
 fluvio topic list
-# 创建主题
-fluvio topic create test-topic
-# 发布主题
-fluvio produce test-topic
 # 消费主题
-fluvio consume test-topic
-# 集群执行单元信息
+fluvio consume uniswap-v2-pair-created -B -d
+# 查看集群工作节点
 fluvio cluster spu list
+```
+
+# 编译
+```bash
+cargo build --release
 ```

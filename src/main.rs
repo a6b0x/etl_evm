@@ -2,9 +2,9 @@ use alloy::primitives::Address;
 use chrono::Local;
 use clap::Parser;
 use eyre::Result;
-use futures::StreamExt;
+use futures_util::StreamExt;
 use log::{debug, info};
-use serde::de;
+use serde_json;
 use std::path::Path;
 use std::str::FromStr;
 
@@ -13,21 +13,22 @@ mod extract_event;
 mod init;
 mod load_block;
 mod load_event;
+mod to_mq;
 mod transform_block;
 mod transform_event;
-mod to_mq;
 
 use crate::{
     extract_block::EvmBlock,
     extract_event::{
-        UniswapV2, UniswapV2MultiPair, UniswapV2Tokens, BURN_EVENT_SIGNATURE, MINT_EVENT_SIGNATURE,
-        SWAP_EVENT_SIGNATURE,
+        BURN_EVENT_SIGNATURE, MINT_EVENT_SIGNATURE, SWAP_EVENT_SIGNATURE, UniswapV2,
+        UniswapV2MultiPair, UniswapV2Tokens,
     },
     init::AppConfig,
     load_event::{PairsTableFile, PairsTableTsdb},
+    to_mq::Mq,
     transform_event::{
-        transform_burn_event, transform_mint_event, transform_pair_created_event,
-        transform_swap_event, BurnEvent, MintEvent, SwapEvent,
+        BurnEvent, MintEvent, SwapEvent, transform_burn_event, transform_mint_event,
+        transform_pair_created_event, transform_swap_event,
     },
 };
 
@@ -46,6 +47,8 @@ enum Commands {
     SubscribeUniv2Event(SubscribeUniv2EventArgs),
     #[command(name = "subscribe_uniswapv2_event_db")]
     SubscribeUniv2EventDb(SubscribeUniv2EventDbArgs),
+    #[command(name = "subscribe_uniswapv2_create_mq")]
+    SubscribeUniv2EventMq(SubscribeUniv2EventMqArgs),
 }
 
 #[derive(Parser, Debug)]
@@ -82,6 +85,16 @@ struct SubscribeUniv2EventDbArgs {
     auth_token: Option<String>,
     #[arg(long)]
     write_url: Option<String>,
+}
+
+#[derive(Parser, Debug)]
+pub struct SubscribeUniv2EventMqArgs {
+    #[arg(long)]
+    ws_url: Option<String>,
+    #[arg(long)]
+    router_address: Option<String>,
+    #[arg(long)]
+    broker_url: Option<String>,
 }
 
 #[tokio::main]
@@ -136,6 +149,21 @@ async fn main() -> Result<()> {
             };
             debug!("app_config: {:#?}", app_config);
             subscribe_univ2_event_db(&app_config).await?;
+        }
+        Commands::SubscribeUniv2EventMq(args) => {
+            let args_is_full =
+                args.ws_url.is_some() && args.router_address.is_some() && args.broker_url.is_some();
+
+            let app_config = if args_is_full {
+                info!("cli args is full,ignoring config file.");
+                AppConfig::from_subscribe_mq_cli(&args)?
+            } else {
+                info!("args is not full, Using default config from data/etl.toml");
+                AppConfig::from_file("data/etl.toml")?
+            };
+
+            debug!("app_config: {:#?}", app_config);
+            subscribe_univ2_event_mq(&app_config).await?;
         }
     }
 
@@ -355,6 +383,48 @@ async fn subscribe_univ2_event_db(config: &AppConfig) -> Result<()> {
             _ => {
                 debug!("Ignoring unknown event signature: {}", event_signature);
             }
+        }
+    }
+
+    Ok(())
+}
+
+async fn subscribe_univ2_event_mq(config: &AppConfig) -> Result<()> {
+    let evm_block = EvmBlock::new(&config.eth.ws_url).await?;
+    let provider = evm_block.provider;
+
+    let router_address = Address::from_str(&config.uniswap_v2.router_address)?;
+    let uniswap_v2 = UniswapV2::new(provider.clone(), router_address).await;
+
+    let mq = Mq::new(&config.mq.broker_url).await?;
+    // topic name may only include lowercase letters (a-z), numbers (0-9), and hyphens (-).
+    let topic_name = "uniswap-v2-pair-created";
+
+    let topics = mq.list_topics().await?;
+    if !topics.iter().any(|t| t == topic_name) {
+        info!("Topic '{}' does not exist, creating it.", topic_name);
+        mq.create_topic(topic_name).await?;
+        info!("Topic '{}' created.", topic_name);
+    } else {
+        info!("Topic '{}' already exists.", topic_name);
+    }
+
+    let mut stream = uniswap_v2.subscribe_pair_created().await?;
+
+    info!(
+        "Listening for PairCreated events to push to MQ topic '{}'...",
+        topic_name
+    );
+    while let Some(log) = stream.next().await {
+        let pair_created_events = transform_pair_created_event(&[log])?;
+        if let Some(event) = pair_created_events.first() {
+            let event_json = serde_json::to_string(event)?;
+            mq.produce_record(topic_name, &event_json).await?;
+            info!(
+                "Pushed PairCreated event for pair {} to topic '{}'",
+                event.pair_address, topic_name
+            );
+            debug!("Event data: {}", event_json);
         }
     }
 

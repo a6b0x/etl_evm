@@ -13,6 +13,8 @@ pair_address = [
 query_url = "http://tsdb:8181/api/v3/query_sql"
 write_url = "http://tsdb:8181/api/v3/write_lp?db=evm_uniswap_v2"
 auth_token = "apiv3_di3lJBckgHFT2cJc5VLkKwsWsVEwI3XZsefjifwwLNR8kruGfhazhZ3tGBvIPZIquaFlbnqHJgTDdaLUFgIzrw"
+[mq]
+broker_url = "mq:9003"
 [log]
 level = "debug" 
 [csv]
