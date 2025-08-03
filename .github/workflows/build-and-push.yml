@@ -3,7 +3,8 @@ name: Docker Build and Push
 # 触发工作流的事件：当有代码推送到 main 分支时
 on:
   push:
-    branches: [ "main" ]
+    branches: [ "master" ]
+  workflow_dispatch:
 
 env:
   # 定义镜像名称为 GHCR 的格式。${{ github.repository }} 会自动解析为 'owner/repo_name'。
