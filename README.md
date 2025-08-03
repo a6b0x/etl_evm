@@ -63,7 +63,7 @@ cargo run -- subscribe_uniswapv2_event_db \
 cargo run -- subscribe_uniswapv2_create_mq \
     --ws-url "wss://reth-ethereum.ithaca.xyz/ws" \ 
     --router-address "0x7a250d5630B4cF539739dF2C5dAcb4c659F2488D" \
-    --mq-url "127.0.0.1:9003"
+    --broker-url "127.0.0.1:9003"
 ```
 
 # 数据存储
@@ -96,5 +96,18 @@ fluvio cluster spu list
 
 # 编译
 ```bash
+# 在服务器上直接编译 (推荐)
+# 编译前，请确保服务器已安装C语言编译工具链，否则会遇到 `linker 'cc' not found` 错误。
+# 对于 Debian/Ubuntu 系统:
+sudo apt update && sudo apt install build-essential -y
+# 对于 CentOS/RHEL 系统:
+sudo yum groupinstall "Development Tools" -y
+
 cargo build --release
+
+# 从本地交叉编译 (可选)
+# 确定部署服务器的架构
+rustc -vV | grep host
+rustup target add x86_64-unknown-linux-gnu
+cargo build --release --target=x86_64-unknown-linux-gnu
 ```
