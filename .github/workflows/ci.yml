@@ -1,6 +1,6 @@
 name: Docker Build and Push
 
-# 触发工作流的事件：当有代码推送到 main 分支时
+# 触发工作流的事件：当有代码推送到 master 分支时
 on:
   push:
     branches: [ "master" ]
@@ -35,7 +35,7 @@ jobs:
       - name: Build and push Docker image
         uses: docker/build-push-action@v5
         with:
-          context: ./etl_evm  # 指定 Dockerfile 所在的目录作为构建上下文
+          context: .  # 指定 Dockerfile 所在的目录作为构建上下文
           push: true
           tags: |
             ${{ env.IMAGE_NAME }}:${{ github.sha }}
