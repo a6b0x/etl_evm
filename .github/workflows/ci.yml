@@ -4,6 +4,10 @@ name: Docker Build and Push
 on:
   push:
     branches: [ "master" ]
+    paths:               # 仅当以下路径发生变更时才触发
+      - 'src/**'
+      - 'Dockerfile'
+      - '.github/workflows/**'
   workflow_dispatch:
 
 env:
